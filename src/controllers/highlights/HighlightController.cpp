@@ -185,6 +185,13 @@ std::unordered_set<QStringView> HighlightController::billTinHighlights()
         YourMessagesHighlight::ID,               //
         LowTrustUserHighlight::ID,               //
         UncategorizedNotificationHighlight::ID,  //
+        DggSubscriptionHighlight::ID,  //
+        DggGiftHighlight::ID,  //
+        DggDonationHighlight::ID,  //
+        DggSpotlightHighlight::ID,  //
+        DggBroadcastHighlight::ID,  //
+        DggXPostHighlight::ID,  //
+        DggVestaboardHighlight::ID,  //
     };
 }
 

@@ -18,7 +18,7 @@ HighlightCheck YourUsernameHighlight::buildCheck() const
     using H = std::remove_pointer_t<decltype(this)>;
     using Params = HighlightCheckParams;
 
-    auto twitchRe = [&] -> std::optional<QRegularExpression> {
+    auto twitchRe = [&]() -> std::optional<QRegularExpression> {
         auto user = getApp()->getAccounts()->twitch.getCurrent();
         auto name = user->getUserName();
         if (user->isAnon() || name.isEmpty())
@@ -33,7 +33,7 @@ HighlightCheck YourUsernameHighlight::buildCheck() const
                 QRegularExpression::CaseInsensitiveOption,
         };
     }();
-    auto kickRe = [&] -> std::optional<QRegularExpression> {
+    auto kickRe = [&]() -> std::optional<QRegularExpression> {
         auto user = getApp()->getAccounts()->kick.current();
         auto name = user->username();
         if (user->isAnonymous() || name.isEmpty())

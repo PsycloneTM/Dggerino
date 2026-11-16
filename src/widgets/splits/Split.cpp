@@ -12,6 +12,7 @@
 #include "controllers/commands/CommandController.hpp"
 #include "controllers/hotkeys/HotkeyController.hpp"
 #include "controllers/notifications/NotificationController.hpp"
+#include "providers/dgg/DggChannel.hpp"
 #include "providers/kick/KickAccount.hpp"
 #include "providers/kick/KickChannel.hpp"
 #include "providers/twitch/TwitchAccount.hpp"
@@ -27,6 +28,7 @@
 #include "util/QMagicEnumTagged.hpp"
 #include "util/StreamLink.hpp"
 #include "widgets/ChatterListWidget.hpp"
+#include "widgets/DggViewerListWidget.hpp"
 #include "widgets/dialogs/SelectChannelDialog.hpp"
 #include "widgets/dialogs/SelectChannelFiltersDialog.hpp"
 #include "widgets/dialogs/UserInfoPopup.hpp"
@@ -38,6 +40,8 @@
 #include "widgets/Notebook.hpp"
 #include "widgets/OverlayWindow.hpp"
 #include "widgets/Scrollbar.hpp"
+#include "widgets/splits/DggPinnedBanner.hpp"
+#include "widgets/splits/DggPollBanner.hpp"
 #include "widgets/splits/DraggedSplit.hpp"
 #include "widgets/splits/PinnedMessageWidget.hpp"
 #include "widgets/splits/SplitContainer.hpp"
@@ -97,6 +101,8 @@ Split::Split(QWidget *parent)
     , vbox_(new QVBoxLayout(this))
     , header_(new SplitHeader(this))
     , pinnedBanner_(new PinnedMessageWidget(this))
+    , dggPinnedBanner_(new DggPinnedBanner(this))
+    , dggPollBanner_(new DggPollBanner(this))
     , view_(new ChannelView(this, this, ChannelView::Context::None,
                             getSettings()->scrollbackSplitLimit))
     , input_(new SplitInput(this))
@@ -112,6 +118,8 @@ Split::Split(QWidget *parent)
 
     this->vbox_->addWidget(this->header_);
     this->vbox_->addWidget(this->pinnedBanner_);
+    this->vbox_->addWidget(this->dggPinnedBanner_);
+    this->vbox_->addWidget(this->dggPollBanner_);
     this->vbox_->addWidget(this->view_, 1);
     this->vbox_->addWidget(this->input_);
 
@@ -722,6 +730,11 @@ PinnedMessageWidget *Split::getPinnedBanner() const
     return this->pinnedBanner_;
 }
 
+DggPinnedBanner *Split::getDggPinnedBanner() const
+{
+    return this->dggPinnedBanner_;
+}
+
 void Split::updateInputPlaceholder()
 {
     auto channel = this->getChannel();
@@ -957,6 +970,15 @@ void Split::updateChannelConnections()
         }
     }
 
+    // The pinned message and the poll of destiny.gg chat (also when it is the
+    // active channel of a merged chat)
+    {
+        const auto dggChannel =
+            std::dynamic_pointer_cast<DggChannel>(this->getSelectedChannel());
+        this->dggPinnedBanner_->setChannel(dggChannel);
+        this->dggPollBanner_->setChannel(dggChannel);
+    }
+
     auto *tc = dynamic_cast<TwitchChannel *>(channel);
     auto *kc = dynamic_cast<KickChannel *>(channel);
     if (tc)
@@ -1183,6 +1205,10 @@ void Split::changeChannel()
             {
                 w->close();
             }
+            for (const auto &w : this->findChildren<DggViewerListWidget *>())
+            {
+                w->close();
+            }
         });
 }
 
@@ -1311,6 +1337,25 @@ void Split::openChatterList()
         return;
     }
 
+    if (auto dggChannel = std::dynamic_pointer_cast<DggChannel>(channel))
+    {
+        auto *viewerDock = new DggViewerListWidget(dggChannel, this);
+
+        QObject::connect(viewerDock, &DggViewerListWidget::userClicked,
+                         [this](const QString &nick) {
+                             this->view_->showUserInfoPopup(
+                                 nick, MessagePlatform::Dgg);
+                         });
+
+        viewerDock->resize(
+            static_cast<int>(this->width() * 0.5),
+            this->height() - this->header_->height() - this->input_->height());
+        widgets::showAndMoveWindowTo(
+            viewerDock, this->mapToGlobal(QPoint{0, this->header_->height()}),
+            widgets::BoundsChecking::CursorPosition);
+        return;
+    }
+
     auto *twitchChannel = dynamic_cast<TwitchChannel *>(channel.get());
     if (twitchChannel == nullptr)
     {
@@ -1405,6 +1450,12 @@ void Split::reconnect()
 
 void Split::togglePinnedBanner()
 {
+    // Only one of the two has a channel: the other has nothing to toggle
+    if (this->dggPinnedBanner_->hasPinnedMessage())
+    {
+        this->dggPinnedBanner_->toggleUserPinned();
+        return;
+    }
     this->pinnedBanner_->toggleUserPinned();
 }
 

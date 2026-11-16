@@ -31,11 +31,12 @@
 #include <QTimer>
 
 #include <algorithm>
-#include <cstring>
 #include <atomic>
+#include <cstring>
+#include <limits>
+#include <map>
 #include <numeric>
 #include <unordered_map>
-#include <limits>
 #include <utility>
 
 // Duration between each check of every Image instance
@@ -324,15 +325,184 @@ struct Frames::CachedFrames : Storage {
     qsizetype loopFrom = -1;
 };
 
+/// The image's own frames (an APNG or GIF) and the CSS poses of its emote
+/// (a slide in, a shake, a flip) as two separate animations. The image
+/// loops on the shared clock, exactly like an emote without CSS; the poses
+/// run on their own, from the moment this copy starts. What is on screen is
+/// the current image frame with the current pose applied. Pictures are made
+/// when first needed and kept, so each pair is drawn only once.
+struct Frames::PosedLiveFrames : Storage {
+    PosedLiveFrames(const QList<Frame> &native,
+                    std::shared_ptr<const SpriteSheetSpec> spec)
+        : spec(std::move(spec))
+    {
+        for (const auto &frame : native)
+        {
+            this->sources.push_back(
+                padSpriteFrame(frame.image.toImage(), this->spec->glowMargin));
+            const int d = frame.duration > 0 ? frame.duration : 100;
+            this->durations.push_back(std::max(20, d));
+            this->nativeTotal += this->durations.back();
+            this->bytes += static_cast<int64_t>(this->sources.back().sizeInBytes());
+        }
+        for (const auto ms : this->spec->durationsMs)
+        {
+            this->poseDurations.push_back(std::max(20, ms));
+            this->poseTotal += this->poseDurations.back();
+        }
+        if (!this->sources.empty() && !this->spec->poses.empty())
+        {
+            this->show(0, 0);
+        }
+    }
+    ~PosedLiveFrames() override = default;
+
+    int64_t memoryUsage() const override
+    {
+        // constant: the debug counters add it on creation and take it off
+        // again on destruction
+        return this->bytes;
+    }
+
+    bool empty() const override
+    {
+        return this->sources.empty() || this->spec->poses.empty();
+    }
+
+    bool animated() const override
+    {
+        return this->sources.size() > 1 || this->spec->poses.size() > 1;
+    }
+
+    void start(GIFTimer *timer) override
+    {
+        this->startPosition = timer->position();
+        this->gifTimerConnection = timer->signal.connect(
+            [this, timer] { this->advance(timer->position()); });
+        this->advance(this->startPosition);
+    }
+
+    void advance(unsigned long position)
+    {
+        // the image: its phase is read off the shared clock, so it is in step
+        // with every other copy of it, whatever the poses do
+        size_t ni = 0;
+        if (this->nativeTotal > 0)
+        {
+            auto phase = static_cast<qint64>(position % this->nativeTotal);
+            while (ni + 1 < this->sources.size() &&
+                   phase >= this->durations[ni])
+            {
+                phase -= this->durations[ni];
+                ni++;
+            }
+        }
+
+        // the poses: their own clock, which starts with this copy
+        const size_t poseCount = this->spec->poses.size();
+        const qint64 elapsed =
+            position > this->startPosition
+                ? static_cast<qint64>(position - this->startPosition)
+                : 0;
+        size_t pi = 0;
+        if (poseCount == 1 && this->spec->loopCount <= 0)
+        {
+            pi = 0;  // never changes (a flip)
+        }
+        else if (this->poseTotal > 0)
+        {
+            if (this->spec->loopCount > 0 &&
+                elapsed >= this->poseTotal *
+                               std::min(this->spec->loopCount, 50))
+            {
+                pi = poseCount;  // done: the rest pose stays
+            }
+            else
+            {
+                auto t = elapsed % this->poseTotal;
+                while (pi + 1 < poseCount && t >= this->poseDurations[pi])
+                {
+                    t -= this->poseDurations[pi];
+                    pi++;
+                }
+            }
+        }
+        this->show(ni, pi);
+    }
+
+    std::optional<QPixmap> current() const override
+    {
+        if (this->empty() || this->currentPixmap.isNull())
+        {
+            return std::nullopt;
+        }
+        return this->currentPixmap;
+    }
+
+    std::optional<QSize> frameSize() const override
+    {
+        if (this->sources.empty())
+        {
+            return std::nullopt;
+        }
+        return this->sources.front().size();
+    }
+
+    void show(size_t ni, size_t pi)
+    {
+        const auto key = std::make_pair(ni, pi);
+        if (this->haveKey && key == this->currentKey)
+        {
+            return;
+        }
+        auto it = this->cache.find(key);
+        if (it == this->cache.end())
+        {
+            if (this->cache.size() > 600)
+            {
+                this->cache.clear();
+            }
+            const auto &pose =
+                pi == this->spec->poses.size() ? this->spec->restPose
+                                               : this->spec->poses[pi];
+            it = this->cache
+                     .emplace(key, QPixmap::fromImage(applySpritePose(
+                                       this->sources[ni], pose,
+                                       this->spec->glowMargin)))
+                     .first;
+        }
+        this->currentKey = key;
+        this->haveKey = true;
+        this->currentPixmap = it->second;
+    }
+
+    std::shared_ptr<const SpriteSheetSpec> spec;
+    std::vector<QImage> sources;
+    std::vector<qint64> durations;
+    std::vector<qint64> poseDurations;
+    qint64 nativeTotal = 0;
+    qint64 poseTotal = 0;
+    int64_t bytes = 0;
+    unsigned long startPosition = 0;
+
+    std::map<std::pair<size_t, size_t>, QPixmap> cache;
+    std::pair<size_t, size_t> currentKey;
+    bool haveKey = false;
+    QPixmap currentPixmap;
+};
+
 Frames::Frames()
     : storage_(std::make_unique<CachedFrames>(QList<Frame>{}, false))
 {
     DebugCount::increase(DebugObject::Image);
 }
 
-Frames::Frames(QList<Frame> &&frames, bool oneShot, qsizetype loopFrom)
-    : storage_(
-          std::make_unique<CachedFrames>(std::move(frames), oneShot, loopFrom))
+Frames::Frames(QList<Frame> &&frames, bool oneShot, qsizetype loopFrom,
+               std::shared_ptr<const SpriteSheetSpec> poses)
+    : storage_(poses ? std::unique_ptr<Storage>(
+                           std::make_unique<PosedLiveFrames>(frames, poses))
+                     : std::unique_ptr<Storage>(std::make_unique<CachedFrames>(
+                           std::move(frames), oneShot, loopFrom)))
 {
     assertInGuiThread();
     auto *app = tryGetApp();
@@ -490,19 +660,20 @@ QList<Frame> readFrames(QImageReader &reader, const Url &url,
 }
 
 void assignFrames(std::weak_ptr<Image> weak, QList<Frame> parsed, bool oneShot,
-                  qsizetype loopFrom)
+                  qsizetype loopFrom,
+                  std::shared_ptr<const SpriteSheetSpec> poses)
 {
     static bool isPushQueued;
 
     auto cb = [parsed = std::move(parsed), weak = std::move(weak), oneShot,
-               loopFrom]() mutable {
+               loopFrom, poses = std::move(poses)]() mutable {
         auto shared = weak.lock();
         if (!shared)
         {
             return;
         }
-        shared->frames_ = std::make_unique<detail::Frames>(std::move(parsed),
-                                                           oneShot, loopFrom);
+        shared->frames_ = std::make_unique<detail::Frames>(
+            std::move(parsed), oneShot, loopFrom, std::move(poses));
         if (shared->autoScale_)
         {
             // FIXME: We should actually scale the pixmaps. However, we'd also
@@ -853,7 +1024,8 @@ QSizeF Image::size() const
 
 QMarginsF Image::canvasMargins() const
 {
-    if (!this->sprite_ || this->sprite_->canvasSize.isEmpty())
+    if (!this->sprite_ ||
+        (this->sprite_->canvasSize.isEmpty() && this->sprite_->glowMargin <= 0))
     {
         return {};
     }
@@ -970,6 +1142,31 @@ void Image::actuallyLoad()
             // top of the image's own frames, each with its own clock, as in a
             // browser. Slicing the first frame as a sprite sheet would throw
             // the image's animation away.
+            // An animated image drawn several times into one wider box (the
+            // combo lines of ARRIVE): every frame of the image is put through
+            // the layers, and the result loops on the shared clock like any
+            // animated image.
+            if (supportsAnimation && spec.hasImageLayers() &&
+                (apng || reportedFrameCount > 1))
+            {
+                auto native =
+                    apng ? apngFrames(std::nullopt)
+                         : detail::readFrames(reader, shared->url(),
+                                              std::nullopt, Image::maxBytesRam);
+                if (native.empty())
+                {
+                    shared->empty_ = true;
+                    return;
+                }
+                for (auto &frame : native)
+                {
+                    frame.image = QPixmap::fromImage(
+                        composeImageLayers(frame.image.toImage(), spec));
+                }
+                assignFrames(shared, std::move(native), false);
+                return;
+            }
+
             const bool nativePosed =
                 supportsAnimation && spec.hasPoses() && !spec.hasOverlays() &&
                 spec.canvasSize.isEmpty() &&
@@ -989,61 +1186,27 @@ void Image::actuallyLoad()
                     shared->empty_ = true;
                     return;
                 }
-                std::vector<SpriteFrame> source;
-                source.reserve(static_cast<size_t>(native.size()));
-                for (const auto &frame : native)
-                {
-                    source.push_back(SpriteFrame{
-                        .image = frame.image.toImage(),
-                        .durationMs = static_cast<int>(frame.duration),
-                    });
-                }
-                auto composed = composePosedNativeFrames(source, spec,
-                                                         Image::maxBytesRam);
-                if (composed.frames.empty())
+                if (spec.poses.size() != spec.durationsMs.size())
                 {
                     shared->empty_ = true;
                     return;
                 }
-
-                // equal frames share one pixmap
-                std::unordered_map<qint64, QPixmap> pixmaps;
-                QList<detail::Frame> frames;
-                frames.reserve(static_cast<qsizetype>(composed.frames.size()));
-                for (auto &frame : composed.frames)
-                {
-                    const auto key = frame.image.cacheKey();
-                    auto it = pixmaps.find(key);
-                    if (it == pixmaps.end())
-                    {
-                        it = pixmaps
-                                 .emplace(key,
-                                          QPixmap::fromImage(
-                                              std::move(frame.image)))
-                                 .first;
-                    }
-                    frames.append(detail::Frame{
-                        .image = it->second,
-                        .duration = frame.durationMs,
-                    });
-                }
                 qCDebug(chatterinoImage)
                     << "Animated image with poses" << shared->url().string
                     << "->" << native.size() << "native frames,"
-                    << frames.size() << "frames in all, loops from"
-                    << composed.loopFrom;
-                // `loopFrom` 0 is an ordinary endless loop (a flip, or poses
-                // that repeat for ever): it has to follow the shared clock
-                // like every other looping image, or two copies of an emote
-                // (one flipped, one not) would drift apart. Only a part that
-                // plays first and then loops from later on starts at frame 0.
-                assignFrames(shared, std::move(frames), false,
-                             composed.loopFrom > 0 ? composed.loopFrom : -1);
+                    << spec.poses.size() << "poses";
+                // two separate animations: the image's own frames loop on the
+                // shared clock like any animated image, the poses (a slide
+                // in, a shake, a flip) run on their own over whichever frame
+                // is current. Nothing is mixed in advance, so nothing has to
+                // line up or restart when the poses end.
+                assignFrames(shared, std::move(native), false, -1,
+                             std::make_shared<const SpriteSheetSpec>(spec));
                 return;
             }
 
             const bool fullImageFrame =
-                !spec.hasPoses() && !spec.hasOverlays() &&
+                !spec.hasPoses() && !spec.hasImageLayers() && !spec.hasOverlays() &&
                 spec.canvasSize.isEmpty() && spec.offsets.size() == 1 &&
                 spec.offsets.front() == QPoint(0, 0) && spec.frameSize == size;
             if (supportsAnimation && fullImageFrame)
@@ -1056,8 +1219,10 @@ void Image::actuallyLoad()
                 {
                     for (auto &frame : frames)
                     {
-                        frame.image = QPixmap::fromImage(
-                            applySpriteFilters(frame.image.toImage(), spec.filters));
+                        frame.image = QPixmap::fromImage(applySpriteFilters(
+                            padSpriteFrame(frame.image.toImage(),
+                                           spec.glowMargin),
+                            spec.filters));
                     }
                 }
                 if (frames.empty())

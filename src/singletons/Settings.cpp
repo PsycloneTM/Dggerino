@@ -970,6 +970,55 @@ bool Settings::recreateMissingHighlights()
                 UncategorizedNotificationHighlight{});
             dirty |= true;
         }
+        if (missing.contains(DggSubscriptionHighlight::ID))
+        {
+            qCInfo(LOG) << "Recreating missing highlight"
+                        << DggSubscriptionHighlight::TYPE_NAME;
+            this->p->sharedHighlightsSetting.push_back(DggSubscriptionHighlight{});
+            dirty |= true;
+        }
+        if (missing.contains(DggGiftHighlight::ID))
+        {
+            qCInfo(LOG) << "Recreating missing highlight"
+                        << DggGiftHighlight::TYPE_NAME;
+            this->p->sharedHighlightsSetting.push_back(DggGiftHighlight{});
+            dirty |= true;
+        }
+        if (missing.contains(DggDonationHighlight::ID))
+        {
+            qCInfo(LOG) << "Recreating missing highlight"
+                        << DggDonationHighlight::TYPE_NAME;
+            this->p->sharedHighlightsSetting.push_back(DggDonationHighlight{});
+            dirty |= true;
+        }
+        if (missing.contains(DggSpotlightHighlight::ID))
+        {
+            qCInfo(LOG) << "Recreating missing highlight"
+                        << DggSpotlightHighlight::TYPE_NAME;
+            this->p->sharedHighlightsSetting.push_back(DggSpotlightHighlight{});
+            dirty |= true;
+        }
+        if (missing.contains(DggBroadcastHighlight::ID))
+        {
+            qCInfo(LOG) << "Recreating missing highlight"
+                        << DggBroadcastHighlight::TYPE_NAME;
+            this->p->sharedHighlightsSetting.push_back(DggBroadcastHighlight{});
+            dirty |= true;
+        }
+        if (missing.contains(DggXPostHighlight::ID))
+        {
+            qCInfo(LOG) << "Recreating missing highlight"
+                        << DggXPostHighlight::TYPE_NAME;
+            this->p->sharedHighlightsSetting.push_back(DggXPostHighlight{});
+            dirty |= true;
+        }
+        if (missing.contains(DggVestaboardHighlight::ID))
+        {
+            qCInfo(LOG) << "Recreating missing highlight"
+                        << DggVestaboardHighlight::TYPE_NAME;
+            this->p->sharedHighlightsSetting.push_back(DggVestaboardHighlight{});
+            dirty |= true;
+        }
     }
 
     return dirty;

@@ -23,6 +23,8 @@ class QPainter;
 
 namespace chatterino {
 
+class Image;
+
 enum class TextDirection : uint8_t {
     Neutral,
     RTL,
@@ -67,6 +69,15 @@ struct MessageLayoutContainer {
      * Break the current line
      */
     void breakLine();
+
+    /**
+     * Draw `image` behind the line that is being laid out, stretched over the
+     * elements flagged `DggComboBody` (destiny.gg's blood splatter behind a
+     * completed combo). It takes no room and is neither hoverable nor
+     * selectable. Images added later are drawn on top of the earlier ones,
+     * each with its `opacity` (0 to 1).
+     */
+    void addBackgroundImage(std::shared_ptr<Image> image, qreal opacity = 1.0);
 
     /**
      * Paint the elements in this message
@@ -352,6 +363,12 @@ private:
      */
     size_t charIndex_ = 0;
     size_t lineStart_ = 0;
+    struct BackgroundLayer {
+        std::shared_ptr<Image> image;
+        qreal opacity = 1.0;
+    };
+    std::vector<BackgroundLayer> backgroundLayers_;
+    QRectF backgroundRect_;
     qreal lineHeight_ = 0;
     qreal spaceWidth_ = 4;
     qreal textLineHeight_ = 0;

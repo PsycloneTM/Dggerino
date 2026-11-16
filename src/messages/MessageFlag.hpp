@@ -82,6 +82,15 @@ enum class MessageFlag : std::int64_t {
     UncategorizedNotification = (1LL << 45),
     /// The message was detected as ASCII art and has its layout width limited to the default web chat width.
     AsciiArt = (1LL << 46),
+    /// destiny.gg events (each has its own built-in highlight)
+    DggSubscription = (1LL << 47),
+    /// A gifted subscription or a mass gift
+    DggGift = (1LL << 48),
+    DggDonation = (1LL << 49),
+    DggSpotlight = (1LL << 50),
+    DggBroadcast = (1LL << 51),
+    DggXPost = (1LL << 52),
+    DggVestaboard = (1LL << 53),
 };
 using MessageFlags = FlagsEnum<MessageFlag>;
 

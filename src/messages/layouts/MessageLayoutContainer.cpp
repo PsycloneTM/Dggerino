@@ -5,6 +5,7 @@
 #include "messages/layouts/MessageLayoutContainer.hpp"
 
 #include "Application.hpp"
+#include "messages/Image.hpp"
 #include "messages/layouts/MessageLayoutContext.hpp"
 #include "messages/layouts/MessageLayoutElement.hpp"
 #include "messages/Message.hpp"
@@ -52,6 +53,8 @@ void MessageLayoutContainer::beginLayout(qreal width, float scale,
     this->lineStart_ = 0;
     this->lineHeight_ = 0;
     this->charIndex_ = 0;
+    this->backgroundLayers_.clear();
+    this->backgroundRect_ = QRectF();
 
     const auto horizontalMargin =
         int(MARGIN.left() * scale) + int(MARGIN.right() * scale);
@@ -111,6 +114,24 @@ void MessageLayoutContainer::endLayout()
         this->breakLine();
     }
 
+    // The image behind a DGG combo line covers its body only: the count, `X`
+    // and `C-C-C-COMBO` (the elements flagged `DggComboBody`), not the emote in
+    // front of them. It is measured here, once every element of the message
+    // has its final position.
+    if (!this->backgroundLayers_.empty())
+    {
+        QRectF covered;
+        for (const auto &element : this->elements_)
+        {
+            if (element->getCreator().getFlags().has(
+                    MessageElementFlag::DggComboBody))
+            {
+                covered = covered.united(element->getRect());
+            }
+        }
+        this->backgroundRect_ = covered;
+    }
+
     this->height_ += this->lineHeight_;
 
     if (!this->lines_.empty())
@@ -152,6 +173,15 @@ void MessageLayoutContainer::addElementNoLineBreak(
     MessageLayoutElement *element)
 {
     this->addElement(element, false, -2);
+}
+
+void MessageLayoutContainer::addBackgroundImage(std::shared_ptr<Image> image,
+                                                qreal opacity)
+{
+    if (image)
+    {
+        this->backgroundLayers_.push_back({std::move(image), opacity});
+    }
 }
 
 void MessageLayoutContainer::breakLine()
@@ -197,6 +227,16 @@ void MessageLayoutContainer::breakLine()
         if (isCompactEmote)
         {
             yExtra = (COMPACT_EMOTES_OFFSET / 2) * this->scale_;
+        }
+
+        // text on a DGG combo line is centred on the line, not on its bottom
+        if (element->getCreator().getFlags().has(
+                MessageElementFlag::DggComboText))
+        {
+            yExtra -=
+                std::max<qreal>(0, this->lineHeight_ -
+                                       element->getRect().height()) /
+                2;
         }
 
         element->setPosition(QPointF{
@@ -259,6 +299,29 @@ void MessageLayoutContainer::paintElements(QPainter &painter,
         painter.fillRect(line.rect, color);
     }
 #endif
+
+    if (!this->backgroundLayers_.empty() && !this->backgroundRect_.isEmpty())
+    {
+        painter.save();
+        painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        for (size_t i = 0; i < this->backgroundLayers_.size(); i++)
+        {
+            const auto &layer = this->backgroundLayers_[i];
+            // every layer is asked for its pixmap, also one that is hidden
+            // under the next: that is what starts loading it, so it is
+            // there when the layer above fades out
+            const auto pixmap = layer.image->pixmapOrLoad();
+            const bool covered = i + 1 < this->backgroundLayers_.size() &&
+                                 this->backgroundLayers_[i + 1].opacity >= 1.0;
+            if (!pixmap || covered || layer.opacity <= 0.0)
+            {
+                continue;
+            }
+            painter.setOpacity(layer.opacity);
+            painter.drawPixmap(this->backgroundRect_, *pixmap, QRectF());
+        }
+        painter.restore();
+    }
 
     for (const auto &element : this->elements_)
     {

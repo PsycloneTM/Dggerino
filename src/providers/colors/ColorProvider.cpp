@@ -76,6 +76,20 @@ void ColorProvider::initDefaultColors()
         highlights::MessageHighlight::BACKGROUND_COLOR_DEFAULT);
     this->defaultColors_.push_back(
         highlights::SubscriptionsHighlight::BACKGROUND_COLOR_DEFAULT);
+    this->defaultColors_.push_back(
+        highlights::DggSubscriptionHighlight::BACKGROUND_COLOR_DEFAULT);
+    this->defaultColors_.push_back(
+        highlights::DggGiftHighlight::BACKGROUND_COLOR_DEFAULT);
+    this->defaultColors_.push_back(
+        highlights::DggDonationHighlight::BACKGROUND_COLOR_DEFAULT);
+    this->defaultColors_.push_back(
+        highlights::DggSpotlightHighlight::BACKGROUND_COLOR_DEFAULT);
+    this->defaultColors_.push_back(
+        highlights::DggBroadcastHighlight::BACKGROUND_COLOR_DEFAULT);
+    this->defaultColors_.push_back(
+        highlights::DggXPostHighlight::BACKGROUND_COLOR_DEFAULT);
+    this->defaultColors_.push_back(
+        highlights::DggVestaboardHighlight::BACKGROUND_COLOR_DEFAULT);
 }
 
 }  // namespace chatterino

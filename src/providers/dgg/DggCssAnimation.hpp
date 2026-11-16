@@ -100,12 +100,20 @@ enum class FilterKind {
     Sepia,
     Invert,
     Opacity,
+    DropShadow,
 };
 
 struct FilterFn {
     FilterKind kind = FilterKind::Brightness;
     /// A factor, or degrees for `hue-rotate`.
     double amount = 1;
+
+    /// Only for `DropShadow`: offset and blur in px, colour as r, g, b in
+    /// 0..255 and alpha in 0..1.
+    double x = 0;
+    double y = 0;
+    double blur = 0;
+    std::array<double, 4> rgba{0, 0, 0, 1};
 
     bool operator==(const FilterFn &) const = default;
 };

@@ -41,8 +41,8 @@ public:
     /// zero if no retry is scheduled (stopped, banned or too many connections).
     std::function<void(std::chrono::milliseconds retryIn)> onClosed;
 
-    /// A frame arrived. For `NAMES`, the payload is reduced to
-    /// `{"connectioncount": N, "usercount": M}`.
+    /// A frame arrived. For `NAMES`, the payload is
+    /// `{"connectioncount": N, "usercount": M, "users": [...]}`.
     std::function<void(const DggFrame &frame)> onFrameReceived;
 
     /// Connects, and keeps reconnecting until stop() is called.

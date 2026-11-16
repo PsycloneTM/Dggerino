@@ -69,6 +69,14 @@ public:
     EmotePtr emoteFor(QStringView word, const DggUser &user,
                       const DggEmoteContext &context) const;
 
+    /// The emote of a combo line, which looks different from the one in a
+    /// chat line: it has no author, so nobody's rules apply to it, and
+    /// `comboCount` (see DggEmoteContext) can pick another look at higher
+    /// counts. Whoever may use the emote: a combo needs the *last* line's
+    /// author to be allowed, which the caller checks. Null if there is no
+    /// such emote.
+    EmotePtr comboEmoteFor(QStringView name, int comboCount) const;
+
     /// What chat-gui's page around the emotes of a message looks like, as far
     /// as the stylesheet can tell. `isAction` is a `/me` line, `backlog` one
     /// from the history replay.
@@ -78,7 +86,8 @@ public:
     /// Badge images for the user's flairs. chat-gui draws them in a flex row,
     /// so the CSS `order` of `flairs.css` decides (lower first), and flairs
     /// with the same value stay in the order of the user's `features`. Flairs
-    /// without an image are skipped.
+    /// without an image are skipped, and so are the subscription badges
+    /// (`subscriber` and the Tier 1 to 5 flairs).
     std::vector<EmotePtr> badgesFor(const DggUser &user) const;
 
     /// How the nick is drawn, from the user's flairs.
@@ -93,6 +102,27 @@ public:
     };
 
     NickStyle nickStyleFor(const DggUser &user) const;
+
+    /// The `features` name of the manifest flair with this label (compared
+    /// without case), e.g. "VIP" -> its name. Null if the manifest has none.
+    /// Used where a flair's name isn't known up front.
+    std::optional<QString> flairNameForLabel(QStringView label) const;
+
+    /// An emote of the emote menu, with who may use it.
+    struct MenuEmote {
+        EmotePtr emote;
+
+        /// 0 means everyone may use it.
+        int minimumSubTier = 0;
+        bool patreonOnly = false;
+    };
+
+    /// Every emote, whoever may use it. Chat is read-only, so the emote menu
+    /// shows all of them. Each emote looks the way it does without a user.
+    std::vector<MenuEmote> menuEmotes() const;
+
+    /// The emote called `name` as the emote menu has it, or null.
+    EmotePtr menuEmote(QStringView name) const;
 
 private:
     struct StringViewHash : std::hash<QStringView> {
@@ -116,6 +146,10 @@ private:
         /// The style `emote` was built from (for a plain context).
         DggEmoteStyle style;
     };
+
+    /// The emote `entry` as it looks in `context`.
+    EmotePtr emoteInContext(const EmoteEntry &entry,
+                            const DggEmoteContext &context) const;
 
     /// `style` for one use of an emote that plays a limited number of times.
     /// Such an animation starts when its image is loaded, so every message

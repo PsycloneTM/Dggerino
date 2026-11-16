@@ -28,6 +28,8 @@ class EditUserNotesDialog;
 class ChannelView;
 class Split;
 struct HelixUser;
+struct DggUser;
+struct DggProfile;
 class LabelButton;
 class PixmapButton;
 class LiveIndicator;
@@ -72,6 +74,9 @@ private:
     void updateAvatarUrl();
 
     void updateKickUserData();
+    void updateDggUserData();
+    void showDggUser(const DggUser &user, const DggProfile &profile);
+    void onDggProfilePictureClick(Qt::MouseButton button);
     void onKickProfilePictureClick(Qt::MouseButton button);
 
     QStringView platformName() const;
@@ -123,6 +128,10 @@ private:
         Label *userIDLabel = nullptr;
         Label *followageLabel = nullptr;
         Label *subageLabel = nullptr;
+        // destiny.gg only
+        MarkdownLabel *watchingLabel = nullptr;
+        Label *bioLabel = nullptr;
+        LabelButton *whisper = nullptr;
 
         LiveIndicator *liveIndicator = nullptr;
 
@@ -135,6 +144,8 @@ private:
         ChannelView *latestMessages = nullptr;
 
         LabelButton *usercardLabel = nullptr;
+        // destiny.gg only: opens the user's logs on RustleSearch
+        LabelButton *logs = nullptr;
         LabelButton *switchAvatars = nullptr;
 
         TimeoutWidget *timeoutWidget = nullptr;
@@ -146,6 +157,7 @@ private:
     QPointer<EditUserNotesDialog> editUserNotesDialog_;
 
     bool isKick_ = false;
+    bool isDgg_ = false;
     uint64_t kickUserID_ = 0;
 
     class TimeoutWidget : public BaseWidget

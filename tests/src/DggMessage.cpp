@@ -1,3 +1,4 @@
+#include "providers/dgg/DggCombo.hpp"
 #include "providers/dgg/DggMessage.hpp"
 
 #include "Test.hpp"
@@ -267,4 +268,376 @@ TEST(DggMessage, ErrorText)
     EXPECT_EQ(dggErrorText(obj(R"({"description":"somethingnew"})")),
               QStringLiteral("somethingnew"));
     EXPECT_EQ(dggErrorText(obj(R"({})")), QStringLiteral("Unknown error."));
+}
+
+TEST(DggMessage, ReadsPhotoCreatedDateAndWatching)
+{
+    const auto doc = QJsonDocument::fromJson(
+        R"({"id":210984,"nick":"Kaimee","roles":[],"features":[],"createdDate":"2024-11-20T00:59:06Z","watching":{"platform":"kick","id":"drt0"},"subscription":null,"patreonMember":false,"photo":"buddy","timestamp":1794684753397,"data":"drt0 NOPERS"})");
+    const auto user = DggUser::fromJson(doc.object());
+    EXPECT_EQ(user.photo, u"buddy"_s);
+    EXPECT_TRUE(user.createdDate.isValid());
+    EXPECT_EQ(user.createdDate.date(), QDate(2024, 11, 20));
+    EXPECT_EQ(user.watchingPlatform, u"kick"_s);
+    EXPECT_EQ(user.watchingId, u"drt0"_s);
+    EXPECT_TRUE(dggPhotoUrl({}).isEmpty());
+}
+
+TEST(DggMessage, NothingAboutPhotosIsBuiltIn)
+{
+    EXPECT_TRUE(dggPhotoUrl(u"neverlearned"_s).isEmpty());
+    // a full URL is the picture itself
+    EXPECT_EQ(dggPhotoUrl(u"https://example.org/a.png"_s).toString(),
+              u"https://example.org/a.png"_s);
+}
+
+TEST(DggMessage, LearnsImagesWithPathsFromAPage)
+{
+    const QByteArray page =
+        R"(<link href="/static/css/app.css">
+           <img src="https://cdn.example.org/img/profile-photo-aaa.0123456789abcdef.png">
+           <img src="/img/icons.fedcba9876543210.png">)";
+    EXPECT_EQ(dggLearnSiteImages(page, QUrl(u"https://www.example.org/embed/chat"_s)), 2);
+    EXPECT_EQ(dggPhotoUrl(u"aaa"_s).toString(),
+              u"https://cdn.example.org/img/profile-photo-aaa.0123456789abcdef.png"_s);
+    EXPECT_EQ(dggSiteImage(u"icons"_s).toString(),
+              u"https://www.example.org/img/icons.fedcba9876543210.png"_s);
+}
+
+TEST(DggMessage, RelativeUrlsInStylesheetsKeepTheirDirectory)
+{
+    // `.msg-death .user::before` on the site: the directory is relative to
+    // the stylesheet, and must not be dropped
+    const QByteArray css =
+        R"(.msg-death .user::before {
+             background-image: url(img/icons.b81b90059d7691309000.png);
+             background-position: -32px 0px;
+           })";
+    EXPECT_EQ(dggLearnSiteImages(
+                  css, QUrl(u"https://cdn.destiny.gg/style.0123456789ab.css"_s)),
+              1);
+    EXPECT_EQ(dggSiteImage(u"icons"_s).toString(),
+              u"https://cdn.destiny.gg/img/icons.b81b90059d7691309000.png"_s);
+}
+
+TEST(DggMessage, BareFileNamesTakeThePathOfAnotherImage)
+{
+    const QByteArray page =
+        R"({"bbb":"profile-photo-bbb.aaaabbbbccccdddd.png"}
+           <img src="https://cdn.example.org/img/profile-photo-ccc.1111222233334444.png">)";
+    EXPECT_EQ(dggLearnSiteImages(page, QUrl(u"https://www.example.org/embed/chat"_s)), 2);
+    EXPECT_EQ(dggPhotoUrl(u"bbb"_s).toString(),
+              u"https://cdn.example.org/img/profile-photo-bbb.aaaabbbbccccdddd.png"_s);
+}
+
+TEST(DggMessage, RehashedImagesReplaceOldOnes)
+{
+    const QUrl page(u"https://www.example.org/embed/chat"_s);
+    dggLearnSiteImages(R"(<img src="/i/profile-photo-ddd.00000000.png">)", page);
+    dggLearnSiteImages(R"(<img src="/i/profile-photo-ddd.11111111.png">)", page);
+    EXPECT_EQ(dggPhotoUrl(u"ddd"_s).toString(),
+              u"https://www.example.org/i/profile-photo-ddd.11111111.png"_s);
+    EXPECT_EQ(dggLearnSiteImages("nothing here", page), 0);
+}
+
+TEST(DggMessage, SiteUrlsComeFromOnePlace)
+{
+    EXPECT_EQ(dggProfileUrl(u"A B"_s).path(), u"/u/A B"_s);
+    EXPECT_EQ(dggUserInfoUrl(u"Just4Universe_"_s).query(),
+              u"username=Just4Universe_"_s);
+    EXPECT_EQ(dggBigscreenUrl(u"kick"_s, u"yunidev"_s).fragment(),
+              u"kick/yunidev"_s);
+    EXPECT_EQ(dggLogsUrl(u"MiXeD"_s).query(), u"username=mixed"_s);
+}
+
+TEST(DggMessage, ParsesUserInfo)
+{
+    const auto doc = QJsonDocument::fromJson(
+        R"({"success":true,"message":null,"data":{"id":187353,"nick":"Just4Universe_","roles":[],"features":["flair127","subscriber"],"createdDate":"2023-06-16T17:37:46+00:00","photo":"buddy","bio":null,"gender":"male","age":"25-34","watching":{"platform":"kick","id":"yunidev"}}})");
+    const auto profile = parseDggUserInfo(doc.object());
+    ASSERT_TRUE(profile.has_value());
+    EXPECT_EQ(profile->user.id, 187353);
+    EXPECT_EQ(profile->user.nick, u"Just4Universe_"_s);
+    EXPECT_EQ(profile->user.photo, u"buddy"_s);
+    EXPECT_EQ(profile->user.watchingPlatform, u"kick"_s);
+    EXPECT_EQ(profile->user.watchingId, u"yunidev"_s);
+    EXPECT_TRUE(profile->user.features.contains(u"subscriber"_s));
+    EXPECT_EQ(profile->age, u"25-34"_s);
+    EXPECT_EQ(profile->gender, u"male"_s);
+    EXPECT_TRUE(profile->bio.isEmpty());
+}
+
+TEST(DggMessage, UserInfoRefusalsAreNotProfiles)
+{
+    EXPECT_FALSE(parseDggUserInfo(QJsonDocument::fromJson(R"({"success":false,"message":"nope","data":null})").object()));
+    EXPECT_FALSE(parseDggUserInfo(QJsonDocument::fromJson(R"({"success":true,"data":{}})").object()));
+    EXPECT_FALSE(parseDggUserInfo({}));
+}
+
+TEST(DggMessage, LearnsImagesFromEscapedJson)
+{
+    const QUrl page(u"https://www.example.org/embed/chat"_s);
+    const QByteArray json =
+        R"({"profilePhotos":{"buddy":"https:\/\/cdn.example.org\/img\/profile-photo-buddy.0123456789abcdef.png"}})";
+    EXPECT_EQ(dggLearnSiteImages(json, page), 1);
+    EXPECT_EQ(dggPhotoUrl(u"buddy"_s),
+              QUrl(u"https://cdn.example.org/img/profile-photo-buddy.0123456789abcdef.png"_s));
+}
+
+TEST(DggMessage, ComboSplatterStaysRedThenFadesToGrey)
+{
+    // `emote-greyout`, 3500 ms: colour for 75 %, then linear to grey
+    EXPECT_EQ(dggComboGreyPercent(0), 0);
+    EXPECT_EQ(dggComboGreyPercent(2625), 0);
+    EXPECT_EQ(dggComboGreyPercent(3062), 49);
+    EXPECT_EQ(dggComboGreyPercent(3500), 100);
+    EXPECT_EQ(dggComboGreyPercent(60000), 100);
+}
+
+TEST(DggMessage, ParsesASubscription)
+{
+    const auto event = parseDggEvent(
+        u"SUBSCRIPTION",
+        obj(R"({"user":{"id":7,"nick":"Subber","features":["flair3"]},
+                "tier":3,"tierLabel":"Tier 3","amount":1000,"streak":4,
+                "data":"hello PepoG","timestamp":5000,"uuid":"u1"})"),
+        NOW);
+    ASSERT_TRUE(event);
+    EXPECT_EQ(event->kind, DggEvent::Kind::Subscription);
+    EXPECT_EQ(event->user.nick, QStringLiteral("Subber"));
+    EXPECT_EQ(event->tier, 3);
+    EXPECT_EQ(event->tierLabel, QStringLiteral("Tier 3"));
+    EXPECT_EQ(event->streak, 4);
+    EXPECT_EQ(event->text, QStringLiteral("hello PepoG"));
+    EXPECT_EQ(event->timestampMs, 5000);
+    EXPECT_EQ(event->uuid, QStringLiteral("u1"));
+}
+
+TEST(DggMessage, TierLabelFallsBackToTheNumber)
+{
+    const auto event = parseDggEvent(
+        u"SUBSCRIPTION", obj(R"({"user":{"nick":"Subber"},"tier":2})"), NOW);
+    ASSERT_TRUE(event);
+    EXPECT_EQ(event->tierLabel, QStringLiteral("Tier 2"));
+    EXPECT_EQ(event->timestampMs, NOW);
+}
+
+TEST(DggMessage, ParsesAGiftSubWithItsRecipient)
+{
+    const auto event = parseDggEvent(
+        u"GIFTSUB",
+        obj(R"({"user":{"nick":"Giver"},"recipient":{"nick":"Lucky"},
+                "tier":1,"fromMassGift":true})"),
+        NOW);
+    ASSERT_TRUE(event);
+    EXPECT_EQ(event->kind, DggEvent::Kind::GiftSub);
+    EXPECT_EQ(event->recipient.nick, QStringLiteral("Lucky"));
+
+    // without a recipient there's nothing to say
+    EXPECT_FALSE(parseDggEvent(u"GIFTSUB",
+                               obj(R"({"user":{"nick":"Giver"},"tier":1})"),
+                               NOW));
+}
+
+TEST(DggMessage, ParsesAMassGiftAndADonation)
+{
+    const auto mass = parseDggEvent(
+        u"MASSGIFT", obj(R"({"user":{"nick":"Giver"},"tier":1,"quantity":5})"),
+        NOW);
+    ASSERT_TRUE(mass);
+    EXPECT_EQ(mass->kind, DggEvent::Kind::MassGift);
+    EXPECT_EQ(mass->quantity, 5);
+
+    // an anonymous donation has no nick
+    const auto donation = parseDggEvent(
+        u"DONATION", obj(R"({"user":{},"amount":2500,"data":"gg"})"), NOW);
+    ASSERT_TRUE(donation);
+    EXPECT_EQ(donation->kind, DggEvent::Kind::Donation);
+    EXPECT_EQ(donation->amountCents, 2500);
+    EXPECT_TRUE(donation->user.nick.isEmpty());
+}
+
+TEST(DggMessage, ParsesASpotlight)
+{
+    const auto event = parseDggEvent(
+        u"SPOTLIGHT",
+        obj(R"({"user":{"id":3,"nick":"Author"},"nick":"Author",
+                "data":"a quote","spotlightedBy":"Mod","key":"abc"})"),
+        NOW);
+    ASSERT_TRUE(event);
+    EXPECT_EQ(event->kind, DggEvent::Kind::Spotlight);
+    EXPECT_EQ(event->user.nick, QStringLiteral("Author"));
+    EXPECT_EQ(event->spotlightedBy, QStringLiteral("Mod"));
+    EXPECT_EQ(event->text, QStringLiteral("a quote"));
+    // names the chat line that was spotlighted
+    EXPECT_EQ(event->messageKey, QStringLiteral("abc"));
+
+    EXPECT_FALSE(parseDggEvent(u"SPOTLIGHT", obj(R"({"nick":"Author"})"), NOW));
+}
+
+TEST(DggMessage, OnlyTheEventNamesAreEvents)
+{
+    EXPECT_TRUE(isDggEventName(u"DONATION"));
+    EXPECT_FALSE(isDggEventName(u"MSG"));
+    EXPECT_FALSE(isDggEventName(u"PAIDEVENTS"));
+    EXPECT_FALSE(parseDggEvent(u"MSG", obj(R"({"nick":"x"})"), NOW));
+}
+
+TEST(DggMessage, ParsesAPin)
+{
+    const auto pin = parseDggPin(
+        obj(R"({"nick":"Mod","features":["flair12"],"data":"  Welcome home  ",
+                "uuid":"u-1","timestamp":123456})"),
+        NOW);
+    EXPECT_EQ(pin.user.nick, QStringLiteral("Mod"));
+    EXPECT_EQ(pin.user.features, QStringList{QStringLiteral("flair12")});
+    EXPECT_EQ(pin.text, QStringLiteral("Welcome home"));
+    EXPECT_EQ(pin.uuid, QStringLiteral("u-1"));
+    EXPECT_EQ(pin.timestampMs, 123456);
+    EXPECT_FALSE(pin.isRemoval());
+}
+
+TEST(DggMessage, AnEmptyPinIsARemoval)
+{
+    const auto empty = parseDggPin(
+        obj(R"({"nick":"Mod","data":"","uuid":"u-1"})"), NOW);
+    EXPECT_TRUE(empty.isRemoval());
+    // no timestamp: now
+    EXPECT_EQ(empty.timestampMs, NOW);
+
+    // the site sends no text at all for it as well
+    EXPECT_TRUE(parseDggPin(obj(R"({"nick":"Mod"})"), NOW).isRemoval());
+    EXPECT_TRUE(parseDggPin(obj(R"({"data":"   "})"), NOW).isRemoval());
+}
+
+TEST(DggMessage, ParsesAPollStart)
+{
+    // The server's clock is 995000 ms behind ours: the poll started 5 s ago
+    // by the server's clock and has 25 s left
+    const auto poll = parseDggPollStart(
+        obj(R"({"canvote":true,"myvote":-1,"weighted":false,"hidden":false,
+                "start":1000000,"now":1005000,"time":30000,
+                "question":"Is it Friday?","options":["Yes","No"],
+                "totals":[3,1],"totalvotes":4,"nick":"Mod"})"),
+        2000000);
+    ASSERT_TRUE(poll);
+    EXPECT_EQ(poll->nick, QStringLiteral("Mod"));
+    EXPECT_EQ(poll->question, QStringLiteral("Is it Friday?"));
+    EXPECT_EQ(poll->options,
+              (QStringList{QStringLiteral("Yes"), QStringLiteral("No")}));
+    EXPECT_EQ(poll->totals, (std::vector<qint64>{3, 1}));
+    EXPECT_EQ(poll->votesCast, 4);
+    EXPECT_TRUE(poll->canVote);
+    // -1 means "not voted"
+    EXPECT_EQ(poll->myVote, 0);
+    EXPECT_FALSE(poll->weighted);
+    EXPECT_FALSE(poll->hidden);
+    EXPECT_FALSE(poll->ended);
+    EXPECT_EQ(poll->durationMs, 30000);
+    EXPECT_EQ(poll->startedAtMs, 1995000);
+    EXPECT_EQ(poll->endsAtMs, 2025000);
+}
+
+TEST(DggMessage, PollStartFallsBackToDefaults)
+{
+    // an empty hidden poll: no totals, no `time`, dates as ISO strings
+    const auto poll = parseDggPollStart(
+        obj(R"({"hidden":true,"weighted":true,
+                "start":"2026-11-15T20:00:00.000Z",
+                "now":"2026-11-15T20:00:00.000Z",
+                "question":"Pick one","options":["A","B","C"],"nick":"Mod"})"),
+        1700000000000);
+    ASSERT_TRUE(poll);
+    EXPECT_TRUE(poll->hidden);
+    EXPECT_TRUE(poll->weighted);
+    EXPECT_EQ(poll->durationMs, 30000);
+    // one zero for each option, nothing voted
+    EXPECT_EQ(poll->totals, (std::vector<qint64>{0, 0, 0}));
+    EXPECT_EQ(poll->votesCast, 0);
+    EXPECT_EQ(poll->endsAtMs - poll->startedAtMs, 30000);
+}
+
+TEST(DggMessage, PollTotalsAreMadeToFitTheOptions)
+{
+    // too few totals are padded, too many cut, strings are numbers too
+    const auto fewer = parseDggPollStart(
+        obj(R"({"question":"Q","options":["A","B","C"],"totals":[2,"5"],
+                "nick":"Mod"})"),
+        NOW);
+    ASSERT_TRUE(fewer);
+    EXPECT_EQ(fewer->totals, (std::vector<qint64>{2, 5, 0}));
+    // without `totalvotes` the votes cast are the sum of the totals
+    EXPECT_EQ(fewer->votesCast, 7);
+
+    const auto more = parseDggPollStart(
+        obj(R"({"question":"Q","options":["A"],"totals":[2,5,9],
+                "nick":"Mod"})"),
+        NOW);
+    ASSERT_TRUE(more);
+    EXPECT_EQ(more->totals, (std::vector<qint64>{2}));
+}
+
+TEST(DggMessage, PollStartNeedsAQuestionAndOptions)
+{
+    EXPECT_FALSE(parseDggPollStart(
+        obj(R"({"question":"","options":["A","B"],"nick":"Mod"})"), NOW));
+    EXPECT_FALSE(parseDggPollStart(
+        obj(R"({"question":"Q","options":[],"nick":"Mod"})"), NOW));
+    EXPECT_FALSE(parseDggPollStart(obj(R"({"nick":"Mod"})"), NOW));
+}
+
+TEST(DggMessage, APollIsTheSamePollAfterAReconnect)
+{
+    // The same poll, sent again after a reconnect: the server's `now` and
+    // our own clock moved, `start` did not
+    const auto first = parseDggPollStart(
+        obj(R"({"start":1000000,"now":1005000,"question":"Q",
+                "options":["A","B"],"nick":"Mod"})"),
+        2000000);
+    const auto again = parseDggPollStart(
+        obj(R"({"start":1000000,"now":1012000,"question":"Q",
+                "options":["A","B"],"nick":"Mod"})"),
+        2009000);
+    ASSERT_TRUE(first);
+    ASSERT_TRUE(again);
+    EXPECT_EQ(first->key(), again->key());
+
+    // another poll by the same user has another key
+    const auto other = parseDggPollStart(
+        obj(R"({"start":1050000,"now":1055000,"question":"Q",
+                "options":["A","B"],"nick":"Mod"})"),
+        2000000);
+    ASSERT_TRUE(other);
+    EXPECT_NE(first->key(), other->key());
+}
+
+TEST(DggMessage, ParsesAPollStop)
+{
+    const auto end =
+        parseDggPollStop(obj(R"({"totals":[10,5],"totalvotes":15})"));
+    ASSERT_TRUE(end);
+    EXPECT_EQ(end->totals, (std::vector<qint64>{10, 5}));
+    EXPECT_EQ(end->votesCast, 15);
+
+    // a hidden poll's stop has the numbers; one without them has no result
+    EXPECT_FALSE(parseDggPollStop(obj(R"({"totalvotes":15})")));
+    EXPECT_FALSE(parseDggPollStop(obj(R"({})")));
+}
+
+TEST(DggMessage, ParsesAVote)
+{
+    const auto vote = parseDggPollVote(obj(R"({"vote":2,"quantity":3})"));
+    EXPECT_EQ(vote.option, 2);
+    EXPECT_EQ(vote.quantity, 3);
+
+    // a hidden poll's votes come without the option, one vote each
+    const auto hidden = parseDggPollVote(obj(R"({})"));
+    EXPECT_EQ(hidden.option, 0);
+    EXPECT_EQ(hidden.quantity, 1);
+
+    // nonsense doesn't subtract votes
+    const auto negative =
+        parseDggPollVote(obj(R"({"vote":-4,"quantity":-2})"));
+    EXPECT_EQ(negative.option, 0);
+    EXPECT_EQ(negative.quantity, 0);
 }

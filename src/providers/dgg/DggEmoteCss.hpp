@@ -53,6 +53,25 @@ struct DggEmoteContext {
     /// it (`usernameColorFlair`). Empty if there is none. Note that this is
     /// *not* every flair the user has, which is what `messageClasses` holds.
     QString nickColorFlair;
+
+    /// The emote sits in a combo line instead of a chat line. chat-gui's
+    /// `ChatEmoteMessage` is
+    ///
+    ///     <div class="msg-chat msg-emote" [data-combo="N"
+    ///          data-combo-group="x5"]>
+    ///       <time/> <span class="text"><div class="emote NAME"/></span>
+    ///       <span class="chat-combo"/>
+    ///     </div>
+    ///
+    /// so there is no nick, no `msg-user`, no `data-username` and no author's
+    /// classes: `username`, `messageClasses`, `elements` and `greentext` are
+    /// ignored.
+    bool comboMessage = false;
+
+    /// `data-combo`: the number of lines in the combo. 0 if the attributes
+    /// aren't there. chat-gui only sets them from the third line on (the
+    /// line that joins two messages has none) and when the combo is over.
+    int comboCount = 0;
 };
 
 /// The result of evaluating `emotes.css` for one emote in one context.
@@ -222,10 +241,12 @@ struct KeyframeStop {
 ///  - neighbours: `+` and `~` between emotes, `:not()`, `:is()`, `:has()` and
 ///    the structural pseudo-classes, evaluated against the elements of the
 ///    message (`DggEmoteContext::elements`);
+///  - combo lines: `.msg-emote` with `[data-combo]` and
+///    `[data-combo-group]` (`DggEmoteContext::comboMessage`);
 ///  - the cascade: specificity, source order and `!important`.
 ///
 /// Everything else is skipped, namely `:hover` rules, pseudo-elements,
-/// neighbour selectors (`+`, `:has()`, `:nth-child()`, ...), combo messages,
+/// neighbour selectors (`+`, `:has()`, `:nth-child()`, ...),
 /// transforms, and every animation that isn't a sprite-sheet one.
 ///
 /// Immutable after parse(), so it can be shared between threads.

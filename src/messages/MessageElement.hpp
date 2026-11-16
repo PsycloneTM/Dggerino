@@ -183,6 +183,21 @@ enum class MessageElementFlag : int64_t {
     /// are enabled.
     DggRainbowUsername = (1LL << 53),
 
+    /// Text on a destiny.gg combo line. The layout centres it vertically on
+    /// the line (against the combo's emote) instead of sitting on its bottom.
+    DggComboText = (1LL << 54),
+
+    /// An image that is no element of its own on a destiny.gg combo line: it
+    /// is drawn behind the whole line, stretched over it (the blood splatter
+    /// behind a completed x10+ combo). It takes no room and can't be hovered
+    /// or selected. See `MessageLayoutContainer::addBackgroundImage()`.
+    DggComboSplat = (1LL << 55),
+
+    /// The count, `X` and `C-C-C-COMBO` (or `HITS`) of a destiny.gg combo
+    /// line: the part the blood splatter is drawn behind. The combo's emote
+    /// and the spacers are not part of it.
+    DggComboBody = (1LL << 56),
+
     Default = Timestamp | Badges | Username | BitsStatic | EmoteImage |
               BitsAmount | Text | AlwaysShow,
 };
@@ -260,6 +275,12 @@ public:
 
     ImagePtr image() const;
 
+    /// How opaque the image is drawn, 0 to 1. Only used for a `DggComboSplat`
+    /// image: several of them are drawn on top of each other, so the blood
+    /// splatter can fade from red to grey without swapping images.
+    ImageElement *setOpacity(qreal opacity);
+    qreal opacity() const;
+
     QJsonObject toJson() const override;
     std::string_view type() const override;
 
@@ -267,6 +288,7 @@ public:
 
 private:
     ImagePtr image_;
+    qreal opacity_ = 1.0;
 };
 
 // contains a image with a circular background color

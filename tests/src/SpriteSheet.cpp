@@ -235,3 +235,28 @@ TEST(SpriteSheet, TheCacheKeyKnowsAboutPlaysAndInstances)
     c.instanceId = 1;
     EXPECT_NE(b.cacheKey(), c.cacheKey());
 }
+
+TEST(SpriteSheet, DropShadowPutsAGlowIntoTheRoomAroundTheFrame)
+{
+    SpriteSheetSpec spec = specFor(QSize(6, 6), {QPoint(0, 0)});
+    spec.glowMargin = 4;
+    SpriteColorFilter shadow;
+    shadow.kind = SpriteColorFilter::Kind::DropShadow;
+    shadow.shadowBlur = 4;
+    shadow.shadowRgba = {255, 0, 0, 1};
+    spec.filters.push_back(shadow);
+
+    const auto frames =
+        sliceSpriteSheet(makeSheet(1, QSize(6, 6)), spec, PLENTY);
+    ASSERT_EQ(frames.size(), 1U);
+    const auto &image = frames.front().image;
+    EXPECT_EQ(image.size(), QSize(14, 14));
+    // the picture is still in the middle, unchanged
+    EXPECT_EQ(qRed(image.pixel(7, 7)), 10);
+    // just outside of it there is red glow now, and no glow at the far edge
+    EXPECT_GT(qAlpha(image.pixel(3, 7)), 0);
+    EXPECT_GT(qRed(image.pixel(3, 7)), 200);
+    EXPECT_EQ(qAlpha(image.pixel(0, 0)), 0);
+    // the layout still sees the emote's own size plus the margins
+    EXPECT_EQ(spec.canvasMargins(), QMargins(4, 4, 4, 4));
+}

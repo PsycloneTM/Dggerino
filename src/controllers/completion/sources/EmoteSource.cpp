@@ -9,6 +9,9 @@
 #include "controllers/completion/sources/Helpers.hpp"
 #include "controllers/emotes/EmoteController.hpp"
 #include "providers/bttv/BttvEmotes.hpp"
+#include "providers/dgg/DggAssets.hpp"
+#include "providers/dgg/DggChannel.hpp"
+#include "providers/dgg/DggChatServer.hpp"
 #include "providers/emoji/Emojis.hpp"
 #include "providers/ffz/FfzEmotes.hpp"
 #include "providers/kick/KickAccount.hpp"
@@ -168,7 +171,27 @@ void EmoteSource::initializeFromChannel(const Channel *channel)
         }
     }
 
-    addEmojis(emotes, app->getEmotes()->getEmojis()->getEmojis());
+    if (channel->isDggChannel())
+    {
+        // only destiny.gg's own emotes; chat is read-only, so no check of who
+        // may use which
+        if (const auto *assets = app->getDggChatServer()->assets())
+        {
+            for (const auto &entry : assets->menuEmotes())
+            {
+                emotes.push_back({.emote = entry.emote,
+                                  .searchName = entry.emote->name.string,
+                                  .tabCompletionName = entry.emote->name.string,
+                                  .displayName = entry.emote->name.string,
+                                  .providerName = "Destiny.gg",
+                                  .isEmoji = false});
+            }
+        }
+    }
+    else
+    {
+        addEmojis(emotes, app->getEmotes()->getEmojis()->getEmojis());
+    }
 
     this->items_ = std::move(emotes);
 }

@@ -23,6 +23,7 @@
 #include "util/DebugCount.hpp"
 #include "util/Variant.hpp"
 
+#include <algorithm>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -194,9 +195,26 @@ void ImageElement::addToContainer(MessageLayoutContainer &container,
 {
     if (this->matchesFlags(ctx.flags))
     {
+        if (this->getFlags().has(MessageElementFlag::DggComboSplat))
+        {
+            // not an element: the container draws it behind the line
+            container.addBackgroundImage(this->image_, this->opacity_);
+            return;
+        }
         container.addElement(new ImageLayoutElement(
             *this, this->image_, this->image_->size() * container.getScale()));
     }
+}
+
+ImageElement *ImageElement::setOpacity(qreal opacity)
+{
+    this->opacity_ = std::clamp(opacity, 0.0, 1.0);
+    return this;
+}
+
+qreal ImageElement::opacity() const
+{
+    return this->opacity_;
 }
 
 ImagePtr ImageElement::image() const
@@ -221,6 +239,7 @@ std::string_view ImageElement::type() const
 std::unique_ptr<MessageElement> ImageElement::clone() const
 {
     auto im = std::make_unique<ImageElement>(this->image_, this->getFlags());
+    im->opacity_ = this->opacity_;
     im->cloneFrom(*this);
     return im;
 }

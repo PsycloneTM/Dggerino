@@ -25,6 +25,9 @@
 #include <QPainterPath>
 #include <QPixmap>
 
+#include <algorithm>
+#include <cmath>
+
 namespace {
 
 const QChar RTL_EMBED(0x202B);
@@ -547,11 +550,8 @@ void TextLayoutElement::paint(QPainter &painter,
             MessageElementFlag::DggRainbowUsername) &&
         getSettings()->displaySevenTVPaints)
     {
-        auto paintPixmap = dggRainbowPaint()->getPixmap(
-            this->getText(), font, this->color_, this->getRect().size(),
-            this->scale_, this->dpr_);
-
-        painter.drawPixmap(this->getRect().topLeft(), paintPixmap);
+        // the rainbow scrolls, so it is drawn in paintAnimated() on every
+        // tick and not into the message's cached picture
         return;
     }
 
@@ -574,6 +574,25 @@ bool TextLayoutElement::paintAnimated(QPainter &painter, const qreal yOffset)
     const bool isNametag =
         this->getLink().type == chatterino::Link::UserInfo ||
         this->getLink().type == chatterino::Link::UserWhisper;
+    if (this->getCreator().getFlags().has(
+            MessageElementFlag::DggRainbowUsername) &&
+        getSettings()->displaySevenTVPaints)
+    {
+        // not Paint::getPixmap(): that leaves the colon of "nick:" plain
+        const auto rainbow = dggRainbowPixmap(
+            this->getText(), font, this->getRect().size(), this->dpr_);
+        auto rainbowRect = this->getRect();
+        rainbowRect.moveTop(rainbowRect.y() + yOffset);
+        // A picture drawn at a fractional position is resampled, and it
+        // wobbles while the view scrolls. Sit it on a device pixel.
+        const qreal dpr = std::max<qreal>(this->dpr_, 1.0);
+        rainbowRect.moveTopLeft(
+            {std::round(rainbowRect.x() * dpr) / dpr,
+             std::round(rainbowRect.y() * dpr) / dpr});
+        painter.drawPixmap(rainbowRect.topLeft(), rainbow);
+        return true;
+    }
+
     const bool drawPaint = isNametag && getSettings()->displaySevenTVPaints;
     if (!drawPaint)
     {

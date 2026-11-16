@@ -3,8 +3,11 @@
 #include <QImage>
 #include <QMargins>
 #include <QPoint>
+#include <QPointF>
+#include <QRectF>
 #include <QtGlobal>
 #include <QSize>
+#include <QSizeF>
 #include <QString>
 
 #include <array>
@@ -28,6 +31,10 @@ struct SpriteColorFilter {
         Sepia,
         Invert,
         Opacity,
+        /// `drop-shadow(x y blur color)`: needs the neighbouring pixels and
+        /// room around the frame (see SpriteSheetSpec::glowMargin). Appended
+        /// after the colour functions: anim::FilterKind has the same order.
+        DropShadow,
     };
 
     Kind kind = Kind::Brightness;
@@ -36,6 +43,14 @@ struct SpriteColorFilter {
     /// saturate and opacity; 0 = unchanged for grayscale, sepia and invert)
     /// or, for hue-rotate, an angle in degrees.
     double amount = 1.0;
+
+    /// Only for `DropShadow`. x/y/blur in px; the colour is r, g, b in 0..255
+    /// and alpha in 0..1. `blur` is a "box-shadow" blur: the gaussian's
+    /// standard deviation is half of it.
+    double shadowX = 0;
+    double shadowY = 0;
+    double shadowBlur = 0;
+    std::array<double, 4> shadowRgba{0, 0, 0, 1};
 
     bool operator==(const SpriteColorFilter &) const = default;
 };
@@ -127,6 +142,36 @@ struct SpriteOverlay {
     bool operator==(const SpriteOverlay &) const = default;
 };
 
+/// One CSS background layer of an emote's box: the emote itself, or a
+/// `::before` / `::after` that has `background: inherit` (ARRIVE's combo
+/// lines). The same image is drawn into `box` at `imageSize`, `imagePos`
+/// from the box's top-left, repeated if asked, coloured by `filters`, and cut
+/// off at the box (and at the emote's edge).
+struct SpriteImageLayer {
+    /// In the emote's box; may reach outside it (the part outside is cut off)
+    QRectF box;
+    /// `background-size`. Empty: the image at its natural size.
+    QSizeF imageSize;
+    /// `background-position`, from the box's top-left
+    QPointF imagePos;
+    bool tileX = false;
+    bool tileY = false;
+    double opacity = 1;
+    std::vector<SpriteColorFilter> filters;
+
+    bool operator==(const SpriteImageLayer &) const = default;
+};
+
+/// `mask-image: radial-gradient(black A%, transparent B%)` on the emote: the
+/// default ellipse that reaches the farthest corner, opaque up to `innerPct`
+/// and clear from `outerPct` of its radius.
+struct SpriteRadialMask {
+    double innerPct = 0;
+    double outerPct = 100;
+
+    bool operator==(const SpriteRadialMask &) const = default;
+};
+
 /// Describes which parts of a (sprite) sheet are shown, in which order and
 /// for how long. This is what a CSS rule like
 ///
@@ -188,6 +233,12 @@ struct SpriteSheetSpec {
     /// if `overlays` is set and the animation `playsOnce()`.
     std::vector<SpriteOverlay> restOverlays;
 
+    /// Room on every side of the frame for a `drop-shadow()` glow (0 if the
+    /// emote has none). The frames are this much bigger on each side; the
+    /// layout gives the emote its own size and lets the glow reach out
+    /// (canvasMargins()). Only used if `canvasSize` is empty.
+    int glowMargin = 0;
+
     /// A canvas that is bigger than the emote. chat-gui widens the box of an
     /// emote while its `::before` flies around (NoTears), and that box is
     /// as far as the overlay reaches. Empty: the canvas is the frame.
@@ -199,6 +250,18 @@ struct SpriteSheetSpec {
     /// The emote is mirrored as a whole (`transform: scale(-1, 1)`): the
     /// overlays are laid out unmirrored and then flipped over the canvas.
     bool canvasMirror = false;
+
+    /// The emote's box is drawn from several copies of the image (see
+    /// SpriteImageLayer), the first being the emote's own background. Each
+    /// frame of the (possibly animated) image is drawn into all of them. Not
+    /// combined with offsets, poses or overlays.
+    std::vector<SpriteImageLayer> imageLayers;
+    std::optional<SpriteRadialMask> mask;
+
+    bool hasImageLayers() const
+    {
+        return !this->imageLayers.empty();
+    }
 
     bool hasOverlays() const
     {
@@ -262,7 +325,19 @@ std::vector<SpriteFrame> sliceSpriteSheet(const QImage &sheet,
 
 /// Draws `pose` on `frame`: filters, clip, opacity, transform. The result
 /// has the size of `frame` and is ARGB32.
-QImage applySpritePose(const QImage &frame, const SpritePose &pose);
+///
+/// `pad`: `frame` has this many transparent pixels on every side (the glow
+/// margin); the pose is still laid out against the unpadded frame.
+QImage applySpritePose(const QImage &frame, const SpritePose &pose,
+                       int pad = 0);
+
+/// `frame` on a transparent image that is `margin` pixels bigger on every
+/// side (ARGB32). Returns the frame as ARGB32 if `margin` is 0.
+QImage padSpriteFrame(const QImage &frame, int margin);
+
+/// How far the `drop-shadow()` functions of these filters reach out of the
+/// frame, in px (0 if there are none).
+int dropShadowReach(const std::vector<SpriteColorFilter> &filters);
 
 /// The frames of an emote that has a natively animated image (an APNG or a
 /// GIF) and CSS that animates `transform`, `opacity`, `filter` or
@@ -294,6 +369,11 @@ PosedNativeFrames composePosedNativeFrames(
     qint64 maxBytes);
 
 /// Applies a filter chain to an image (any format; the result is ARGB32).
+/// Draws `image` (one frame of the emote's image) into every layer of
+/// `spec.imageLayers`, in order, and applies `spec.mask`. The result is
+/// `spec.frameSize` big.
+QImage composeImageLayers(const QImage &image, const SpriteSheetSpec &spec);
+
 QImage applySpriteFilters(const QImage &image,
                           const std::vector<SpriteColorFilter> &filters);
 

@@ -25,6 +25,13 @@ struct UserHighlight;
 struct BadgeHighlight;
 struct LowTrustUserHighlight;
 struct UncategorizedNotificationHighlight;
+struct DggSubscriptionHighlight;
+struct DggGiftHighlight;
+struct DggDonationHighlight;
+struct DggSpotlightHighlight;
+struct DggBroadcastHighlight;
+struct DggXPostHighlight;
+struct DggVestaboardHighlight;
 
 // clang-format off
 /// Variant of all types of highlights.
@@ -54,7 +61,14 @@ using AnyHighlight = std::variant<
     BadgeHighlight,
     FilterHighlight,
     LowTrustUserHighlight,
-    UncategorizedNotificationHighlight
+    UncategorizedNotificationHighlight,
+    DggSubscriptionHighlight,
+    DggGiftHighlight,
+    DggDonationHighlight,
+    DggSpotlightHighlight,
+    DggBroadcastHighlight,
+    DggXPostHighlight,
+    DggVestaboardHighlight
     >;
 // clang-format on
 

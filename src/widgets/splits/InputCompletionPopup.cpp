@@ -144,7 +144,8 @@ std::optional<std::pair<QStringList, int>>
         }
 
         auto text = item->insertionText();
-        if (*this->currentKind_ == CompletionKind::User)
+        if (*this->currentKind_ == CompletionKind::User &&
+            !this->currentChannel_->isDggChannel())
         {
             text =
                 "@" + formatUserMention(text, isFirstWord,

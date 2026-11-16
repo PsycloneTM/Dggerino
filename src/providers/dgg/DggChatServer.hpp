@@ -1,11 +1,18 @@
 #pragma once
 
+#include "messages/Emote.hpp"
+#include "messages/Message.hpp"
 #include "providers/dgg/DggFrame.hpp"
+#include "providers/dgg/DggMessage.hpp"
 
 #include <pajlada/signals/signalholder.hpp>
+#include <QDateTime>
 #include <QObject>
+#include <QString>
 
 #include <chrono>
+#include <functional>
+#include <optional>
 #include <memory>
 #include <vector>
 
@@ -14,12 +21,29 @@ namespace chatterino {
 class Channel;
 class DggAssets;
 class DggChannel;
+struct DggChatMessage;
+struct DggComboLine;
 class DggWebSocket;
 
 /// Owns the destiny.gg chat channel and its websocket.
 ///
 /// The connection is opened when the channel is first requested and closed
 /// again when the last split showing it goes away.
+/// Reads the hashed images (profile pictures, icon sheet) from the site once
+/// per run, then calls `done` (at once if that already happened; also if it
+/// failed, so callers can carry on without images; a failure is retried by
+/// the next call). GUI thread only.
+void dggLoadSiteImages(std::function<void()> done = {});
+
+/// Asks the site for the profile of `nick`. `done` gets the profile, or
+/// nullopt and the HTTP status (0 if there was none) when the site refused or
+/// had nothing. The request is anonymous unless the environment variable
+/// CHATTERINO_DGG_COOKIE holds a `Cookie` header value the user chose to
+/// supply. GUI thread only.
+void dggFetchUserInfo(
+    const QString &nick,
+    std::function<void(const std::optional<DggProfile> &, int status)> done);
+
 class DggChatServer : public QObject
 {
 public:
@@ -39,20 +63,72 @@ public:
     /// Returns the DGG channel if it currently exists, otherwise null.
     std::shared_ptr<DggChannel> channel() const;
 
+    /// The emote and flair data (null until the server exists). For the user
+    /// card, which draws a user's flairs.
+    const DggAssets *assets() const;
+
 private:
     void ensureConnected(const std::shared_ptr<DggChannel> &chan);
 
     void onSocketOpened();
     void onSocketClosed(std::chrono::milliseconds retryIn);
     /// Entry point for frames from the websocket. Holds them back until the
-    /// emote and flair manifests are loaded, so the backlog isn't built
-    /// without emotes.
+    /// emote and flair manifests and the site images are loaded, so the
+    /// backlog isn't built without emotes or the icon of a death line.
     void onFrame(const DggFrame &frame);
     void handleFrame(const DggFrame &frame);
+    /// Handles the held frames once the emote and flair manifests and the
+    /// site images are both known.
+    void flushPendingFrames();
+
+    /// The last chat line, which is what the next one may combine with (like
+    /// chat-gui's `lastmessage`). Everything else that is added to the chat
+    /// (a system line, a mute) ends the combo.
+    struct ComboState {
+        /// What the line said, without a slash command.
+        QString text;
+
+        /// Lines so far. 1 until an identical one arrives.
+        int count = 1;
+
+        /// The line in the channel is a combo line (count >= 2).
+        bool isCombo = false;
+
+        /// The message in the channel that stands for the lines so far.
+        MessagePtr shown;
+
+        /// Time and id of the first line, which the combo line keeps.
+        QDateTime firstTime;
+        QString firstId;
+
+        /// The latest line came from the history replay.
+        bool backlog = false;
+
+        /// The emote of the combo line and the look it was resolved for
+        /// (`x5`, empty before the attributes are there), so a line that
+        /// only changes its count keeps the same image and its animation
+        /// isn't restarted by every hit.
+        EmotePtr emote;
+        QString emoteLook;
+    };
+
+    /// Adds `msg` to the running combo if it continues it. Returns false if
+    /// it doesn't, and nothing changed then.
+    bool continueCombo(DggChannel &chan, const DggChatMessage &msg,
+                       const QString &textOnly, bool backlog);
+
+    /// Completes the running combo ("5 X C-C-C-COMBO") and forgets it. Call
+    /// before anything else is added to the chat.
+    void endCombo(DggChannel &chan);
+
+    DggComboLine comboLine(ComboState &state, bool complete) const;
+
+    std::optional<ComboState> combo_;
 
     std::weak_ptr<DggChannel> channel_;
     std::unique_ptr<DggAssets> assets_;
     std::vector<DggFrame> pendingFrames_;
+    bool siteImagesReady_ = false;
     std::unique_ptr<DggWebSocket> socket_;
     pajlada::Signals::SignalHolder signalHolder_;
 };

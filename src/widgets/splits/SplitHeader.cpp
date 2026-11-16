@@ -14,6 +14,7 @@
 #include "controllers/hotkeys/HotkeyCategory.hpp"
 #include "controllers/hotkeys/HotkeyController.hpp"
 #include "controllers/notifications/NotificationController.hpp"
+#include "providers/dgg/DggChannel.hpp"
 #include "providers/kick/KickChannel.hpp"
 #include "providers/twitch/api/Helix.hpp"
 #include "providers/twitch/TwitchAccount.hpp"
@@ -33,6 +34,7 @@
 #include "widgets/dialogs/SettingsDialog.hpp"
 #include "widgets/helper/CommonTexts.hpp"
 #include "widgets/Label.hpp"
+#include "widgets/splits/DggPinnedBanner.hpp"
 #include "widgets/splits/PinnedMessageWidget.hpp"
 #include "widgets/splits/Split.hpp"
 #include "widgets/splits/SplitContainer.hpp"
@@ -765,6 +767,13 @@ std::unique_ptr<QMenu> SplitHeader::createMainMenu()
             moreMenu->addAction(action);
         }
     }
+    else if (selected && selected->isDggChannel())
+    {
+        moreMenu->addAction(
+            "Show viewer list",
+            h->getDisplaySequence(HotkeyCategory::Split, "openViewerList"),
+            this->split_, &Split::openChatterList);
+    }
 
     moreMenu->addSeparator();
     moreMenu->addAction(
@@ -990,6 +999,20 @@ void SplitHeader::handleChannelChanged()
 
         this->updatePinButton();
     }
+    else if (auto *dggChannel = dynamic_cast<DggChannel *>(channel.get()))
+    {
+        this->channelConnections_.managedConnect(
+            dggChannel->pinnedMessageChanged, [this]() {
+                this->updatePinButton();
+            });
+
+        this->channelConnections_.managedConnect(
+            this->split_->getDggPinnedBanner()->visibilityChanged, [this]() {
+                this->updatePinButton();
+            });
+
+        this->updatePinButton();
+    }
     else
     {
         this->updatePinButton();
@@ -1019,11 +1042,25 @@ void SplitHeader::updatePinButton()
 {
     auto channel = this->split_->getSelectedChannel();
     auto *twitchChannel = dynamic_cast<TwitchChannel *>(channel.get());
-    const bool hasPinnedMessage = twitchChannel != nullptr &&
-                                  twitchChannel->getPinnedMessage() != nullptr;
+    auto *dggChannel = dynamic_cast<DggChannel *>(channel.get());
+    const bool hasPinnedMessage =
+        (twitchChannel != nullptr &&
+         twitchChannel->getPinnedMessage() != nullptr) ||
+        (dggChannel != nullptr && dggChannel->pinnedMessage().has_value());
+
+    // The banners don't exist yet while the split is still building this
+    // header, so only look at them once something is pinned (which is never
+    // the case that early)
+    bool bannerShown = false;
+    if (hasPinnedMessage)
+    {
+        bannerShown = dggChannel != nullptr
+                          ? this->split_->getDggPinnedBanner()->isVisible()
+                          : this->split_->getPinnedBanner()->isVisible();
+    }
 
     this->pinButton_->setVisible(hasPinnedMessage);
-    if (hasPinnedMessage && this->split_->getPinnedBanner()->isVisible())
+    if (bannerShown)
     {
         this->pinButton_->setColor(this->theme->accent);
     }
@@ -1194,6 +1231,12 @@ void SplitHeader::updateIcons()
         {
             this->chattersButton_->hide();
         }
+    }
+    else if (channel->isDggChannel())
+    {
+        // anybody can see who is connected; DGG has no moderation mode here
+        this->moderationButton_->hide();
+        this->chattersButton_->show();
     }
     else
     {

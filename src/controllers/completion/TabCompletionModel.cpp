@@ -79,9 +79,25 @@ std::optional<TabCompletionModel::SourceKind>
     TabCompletionModel::deduceSourceKind(const QString &query,
                                          bool isFirstWord) const
 {
-    if (query.length() < 2 || !this->channel_.isTwitchOrKickChannel())
+    if (query.length() < 2 || !(this->channel_.isTwitchOrKickChannel() ||
+                                this->channel_.isDggChannel()))
     {
         return std::nullopt;
+    }
+
+    // destiny.gg has no `@` or `:` prefix and none of Chatterino's commands:
+    // a word completes to an emote or to a user
+    if (this->channel_.isDggChannel())
+    {
+        if (query.startsWith(':'))
+        {
+            return SourceKind::Emote;
+        }
+        if (isFirstWord && (query.startsWith('/') || query.startsWith('.')))
+        {
+            return std::nullopt;
+        }
+        return SourceKind::EmoteUser;
     }
 
     // Check for cases where we can definitively say what kind of completion is taking place.

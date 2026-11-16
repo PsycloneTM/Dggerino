@@ -24,6 +24,8 @@ class SplitInput;
 class SplitContainer;
 class SplitOverlay;
 class PinnedMessageWidget;
+class DggPinnedBanner;
+class DggPollBanner;
 class SelectChannelDialog;
 class OverlayWindow;
 
@@ -58,6 +60,10 @@ public:
     ChannelView &getChannelView();
     SplitInput &getInput();
     [[nodiscard]] PinnedMessageWidget *getPinnedBanner() const;
+
+    /// The banner for the message pinned in destiny.gg chat (not shown for
+    /// other channels).
+    [[nodiscard]] DggPinnedBanner *getDggPinnedBanner() const;
 
     IndirectChannel getIndirectChannel() const;
     ChannelPtr getChannel() const;
@@ -175,6 +181,8 @@ private:
     QVBoxLayout *const vbox_;
     SplitHeader *const header_;
     PinnedMessageWidget *const pinnedBanner_;
+    DggPinnedBanner *const dggPinnedBanner_;
+    DggPollBanner *const dggPollBanner_;
     ChannelView *const view_;
     SplitInput *const input_;
     SplitOverlay *const overlay_;

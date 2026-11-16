@@ -145,6 +145,9 @@ Rgba applyFilter(Rgba px, const SpriteColorFilter &filter)
             px[3] = px[3] * clamp01(filter.amount);
             return px;
         }
+        case Kind::DropShadow:
+            // needs the neighbours: see applyDropShadow()
+            return px;
     }
     return px;
 }
@@ -536,6 +539,16 @@ void drawOverlay(QImage &target, const SpriteOverlay &o)
                                              std::abs(shadow.y)) +
                                     2);
     }
+    for (const auto &filter : o.filters)
+    {
+        if (filter.kind == SpriteColorFilter::Kind::DropShadow)
+        {
+            reach = std::max(reach, filter.shadowBlur * 1.5 +
+                                        std::max(std::abs(filter.shadowX),
+                                                 std::abs(filter.shadowY)) +
+                                        2);
+        }
+    }
     reach = std::min(reach, 64.0);
     QRectF area = QRectF(0, 0, box.width(), box.height())
                       .united(QRectF(x - reach, y - reach, elementW + 2 * reach,
@@ -632,7 +645,13 @@ QImage composeFrame(const QImage &frame, const SpriteSheetSpec &spec,
     }
     if (hasOverlays)
     {
-        QImage layer = transparentImage(canvasSize);
+        // The overlays are laid out against the emote's box. That is the
+        // canvas, except for the room around a glow: `frame` is padded then
+        const int pad = spec.canvasSize.isEmpty() ? spec.glowMargin : 0;
+        const QPoint origin(pad, pad);
+        const QSize boxSize(canvasSize.width() - 2 * pad,
+                            canvasSize.height() - 2 * pad);
+        QImage layer = transparentImage(boxSize);
         for (const auto &overlay : *overlays)
         {
             drawOverlay(layer, overlay);
@@ -642,7 +661,7 @@ QImage composeFrame(const QImage &frame, const SpriteSheetSpec &spec,
             layer = layer.mirrored(true, false);
         }
         QPainter painter(&canvas);
-        painter.drawImage(0, 0, layer);
+        painter.drawImage(origin, layer);
     }
     return canvas.convertToFormat(QImage::Format_ARGB32);
 }
@@ -671,7 +690,8 @@ QMargins SpriteSheetSpec::canvasMargins() const
 {
     if (this->canvasSize.isEmpty())
     {
-        return {};
+        return QMargins(this->glowMargin, this->glowMargin, this->glowMargin,
+                        this->glowMargin);
     }
     const int left = std::max(0, this->canvasImagePos.x());
     const int top = std::max(0, this->canvasImagePos.y());
@@ -713,11 +733,32 @@ QString SpriteSheetSpec::cacheKey() const
         blob.append(this->tileY ? "ty" : "");
         blob.append('|');
     }
+    const auto shadowKey = [&](const SpriteColorFilter &filter, int prec) {
+        if (filter.kind != SpriteColorFilter::Kind::DropShadow)
+        {
+            return;
+        }
+        blob.append('s');
+        for (const auto v : {filter.shadowX, filter.shadowY, filter.shadowBlur,
+                             filter.shadowRgba[0], filter.shadowRgba[1],
+                             filter.shadowRgba[2], filter.shadowRgba[3]})
+        {
+            blob.append(QByteArray::number(v, 'g', prec));
+            blob.append('_');
+        }
+    };
+    if (this->glowMargin > 0)
+    {
+        blob.append('g');
+        blob.append(QByteArray::number(this->glowMargin));
+        blob.append('|');
+    }
     for (const auto &filter : this->filters)
     {
         blob.append(QByteArray::number(static_cast<int>(filter.kind)));
         blob.append(':');
         blob.append(QByteArray::number(filter.amount, 'g', 10));
+        shadowKey(filter, 10);
         blob.append(';');
     }
 
@@ -736,6 +777,7 @@ QString SpriteSheetSpec::cacheKey() const
                 blob.append(QByteArray::number(static_cast<int>(filter.kind)));
                 blob.append(':');
                 blob.append(QByteArray::number(filter.amount, 'g', 8));
+                shadowKey(filter, 8);
                 blob.append(',');
             }
             blob.append('c');
@@ -817,6 +859,16 @@ QString SpriteSheetSpec::cacheKey() const
                 blob.append('f');
                 num(static_cast<double>(filter.kind));
                 num(filter.amount);
+                if (filter.kind == SpriteColorFilter::Kind::DropShadow)
+                {
+                    num(filter.shadowX);
+                    num(filter.shadowY);
+                    num(filter.shadowBlur);
+                    for (const auto v : filter.shadowRgba)
+                    {
+                        num(v);
+                    }
+                }
             }
             blob.append(';');
         };
@@ -859,19 +911,88 @@ QString SpriteSheetSpec::cacheKey() const
         blob.append(QByteArray::number(this->instanceId));
     }
 
+    if (!this->imageLayers.empty() || this->mask)
+    {
+        blob.append("|L");
+        const auto num = [&](double v) {
+            blob.append(QByteArray::number(v, 'g', 8));
+            blob.append(',');
+        };
+        for (const auto &layer : this->imageLayers)
+        {
+            for (const auto v : {layer.box.x(), layer.box.y(),
+                                 layer.box.width(), layer.box.height(),
+                                 layer.imageSize.width(),
+                                 layer.imageSize.height(), layer.imagePos.x(),
+                                 layer.imagePos.y(), layer.opacity})
+            {
+                num(v);
+            }
+            blob.append(layer.tileX ? "x" : "-");
+            blob.append(layer.tileY ? "y" : "-");
+            for (const auto &filter : layer.filters)
+            {
+                blob.append(QByteArray::number(static_cast<int>(filter.kind)));
+                blob.append(':');
+                num(filter.amount);
+            }
+            blob.append(';');
+        }
+        if (this->mask)
+        {
+            blob.append('m');
+            num(this->mask->innerPct);
+            num(this->mask->outerPct);
+        }
+    }
+
     return QString::fromLatin1(
         QCryptographicHash::hash(blob, QCryptographicHash::Sha1).toHex());
 }
 
-QImage applySpriteFilters(const QImage &image,
-                          const std::vector<SpriteColorFilter> &filters)
-{
-    QImage out = image.convertToFormat(QImage::Format_ARGB32);
-    if (filters.empty())
-    {
-        return out;
-    }
+namespace {
 
+/// `drop-shadow()`: the image's silhouette, in the shadow's colour, moved and
+/// blurred, with the image on top. The image must have room for the glow
+/// (the result has its size).
+QImage applyDropShadow(const QImage &image, const SpriteColorFilter &filter)
+{
+    const QImage src = image.convertToFormat(QImage::Format_ARGB32);
+    QImage shadow(src.size(), QImage::Format_ARGB32_Premultiplied);
+    shadow.fill(Qt::transparent);
+
+    const auto &c = filter.shadowRgba;
+    for (int y = 0; y < src.height(); y++)
+    {
+        const auto *in = reinterpret_cast<const QRgb *>(src.constScanLine(y));
+        auto *out = reinterpret_cast<QRgb *>(shadow.scanLine(y));
+        for (int x = 0; x < src.width(); x++)
+        {
+            const double a = qAlpha(in[x]) / 255.0 * clamp01(c[3]);
+            if (a <= 0)
+            {
+                continue;
+            }
+            out[x] = qRgba(toByte(c[0] / 255.0 * a), toByte(c[1] / 255.0 * a),
+                           toByte(c[2] / 255.0 * a), toByte(a));
+        }
+    }
+    blurImage(shadow, filter.shadowBlur / 2.0);
+
+    QImage result = transparentImage(src.size());
+    {
+        QPainter painter(&result);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        painter.drawImage(QPointF(filter.shadowX, filter.shadowY), shadow);
+        painter.drawImage(0, 0, src);
+    }
+    return result.convertToFormat(QImage::Format_ARGB32);
+}
+
+/// The colour functions `filters[from, to)` over every pixel of `out`.
+void applyColorFilters(QImage &out, const std::vector<SpriteColorFilter> &filters,
+                       size_t from, size_t to)
+{
     for (int y = 0; y < out.height(); y++)
     {
         auto *line = reinterpret_cast<QRgb *>(out.scanLine(y));
@@ -884,9 +1005,9 @@ QImage applySpriteFilters(const QImage &image,
                 qBlue(in) / 255.0,
                 qAlpha(in) / 255.0,
             };
-            for (const auto &filter : filters)
+            for (size_t i = from; i < to; i++)
             {
-                px = applyFilter(px, filter);
+                px = applyFilter(px, filters[i]);
                 // every filter function of a chain clamps its result, as
                 // browsers do: without it saturate(60) overshoots by far and
                 // the next filter turns the emote plain red (COOMER)
@@ -898,10 +1019,183 @@ QImage applySpriteFilters(const QImage &image,
                             toByte(px[3]));
         }
     }
+}
+
+}  // namespace
+
+QImage applySpriteFilters(const QImage &image,
+                          const std::vector<SpriteColorFilter> &filters)
+{
+    QImage out = image.convertToFormat(QImage::Format_ARGB32);
+    size_t i = 0;
+    while (i < filters.size())
+    {
+        if (filters[i].kind == SpriteColorFilter::Kind::DropShadow)
+        {
+            out = applyDropShadow(out, filters[i]);
+            i++;
+            continue;
+        }
+        size_t j = i;
+        while (j < filters.size() &&
+               filters[j].kind != SpriteColorFilter::Kind::DropShadow)
+        {
+            j++;
+        }
+        applyColorFilters(out, filters, i, j);
+        i = j;
+    }
     return out;
 }
 
-QImage applySpritePose(const QImage &frame, const SpritePose &pose)
+QImage composeImageLayers(const QImage &image, const SpriteSheetSpec &spec)
+{
+    const QSize size = spec.frameSize;
+    QImage canvas(size, QImage::Format_ARGB32_Premultiplied);
+    canvas.fill(Qt::transparent);
+    if (image.isNull() || size.isEmpty())
+    {
+        return canvas.convertToFormat(QImage::Format_ARGB32);
+    }
+    const QImage source = image.convertToFormat(QImage::Format_ARGB32);
+    const QRectF canvasRect(QPointF(0, 0), QSizeF(size));
+
+    for (const auto &layer : spec.imageLayers)
+    {
+        // what the layer's box shows of the emote's box
+        const QRectF visible = layer.box.intersected(canvasRect);
+        if (visible.width() < 0.5 || visible.height() < 0.5)
+        {
+            continue;
+        }
+        QSizeF drawn = layer.imageSize;
+        if (drawn.isEmpty())
+        {
+            drawn = QSizeF(source.size());
+        }
+        if (drawn.width() < 0.5 || drawn.height() < 0.5)
+        {
+            continue;
+        }
+
+        // the layer on its own: its box, with the image repeated in it
+        const QSize boxSize(std::max(1, static_cast<int>(std::lround(layer.box.width()))),
+                            std::max(1, static_cast<int>(std::lround(layer.box.height()))));
+        QImage box(boxSize, QImage::Format_ARGB32_Premultiplied);
+        box.fill(Qt::transparent);
+        {
+            QPainter painter(&box);
+            painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+            const double w = drawn.width();
+            const double h = drawn.height();
+            // first copy that touches the box, going left / up from the
+            // position when the image repeats
+            double startX = layer.imagePos.x();
+            double startY = layer.imagePos.y();
+            if (layer.tileX)
+            {
+                startX -= std::ceil(startX / w) * w;
+                if (startX > 0)
+                {
+                    startX -= w;
+                }
+            }
+            if (layer.tileY)
+            {
+                startY -= std::ceil(startY / h) * h;
+                if (startY > 0)
+                {
+                    startY -= h;
+                }
+            }
+            for (double y = startY; y < boxSize.height(); y += h)
+            {
+                for (double x = startX; x < boxSize.width(); x += w)
+                {
+                    painter.drawImage(QRectF(x, y, w, h), source);
+                    if (!layer.tileX)
+                    {
+                        break;
+                    }
+                }
+                if (!layer.tileY)
+                {
+                    break;
+                }
+            }
+        }
+
+        QImage layerImage = box.convertToFormat(QImage::Format_ARGB32);
+        if (!layer.filters.empty())
+        {
+            layerImage = applySpriteFilters(layerImage, layer.filters);
+        }
+
+        QPainter painter(&canvas);
+        painter.setOpacity(std::clamp(layer.opacity, 0.0, 1.0));
+        painter.setClipRect(canvasRect);
+        painter.drawImage(layer.box.topLeft(), layerImage);
+    }
+
+    QImage out = canvas.convertToFormat(QImage::Format_ARGB32);
+    if (spec.mask)
+    {
+        // radial-gradient(...): an ellipse around the middle that reaches the
+        // farthest corner, i.e. the closest-side ellipse times sqrt(2)
+        const double rx = size.width() / 2.0 * std::sqrt(2.0);
+        const double ry = size.height() / 2.0 * std::sqrt(2.0);
+        const double a = spec.mask->innerPct / 100.0;
+        const double b = std::max(a + 1e-6, spec.mask->outerPct / 100.0);
+        for (int y = 0; y < out.height(); y++)
+        {
+            auto *line = reinterpret_cast<QRgb *>(out.scanLine(y));
+            const double dy = (y + 0.5 - size.height() / 2.0) / ry;
+            for (int x = 0; x < out.width(); x++)
+            {
+                const double dx = (x + 0.5 - size.width() / 2.0) / rx;
+                const double d = std::sqrt(dx * dx + dy * dy);
+                const double k = d <= a ? 1.0 : d >= b ? 0.0 : (b - d) / (b - a);
+                const QRgb px = line[x];
+                line[x] = qRgba(qRed(px), qGreen(px), qBlue(px),
+                                static_cast<int>(std::lround(qAlpha(px) * k)));
+            }
+        }
+    }
+    return out;
+}
+
+QImage padSpriteFrame(const QImage &frame, int margin)
+{
+    if (margin <= 0)
+    {
+        return frame.convertToFormat(QImage::Format_ARGB32);
+    }
+    QImage out = transparentImage(
+        QSize(frame.width() + 2 * margin, frame.height() + 2 * margin));
+    {
+        QPainter painter(&out);
+        painter.drawImage(margin, margin, frame);
+    }
+    return out.convertToFormat(QImage::Format_ARGB32);
+}
+
+int dropShadowReach(const std::vector<SpriteColorFilter> &filters)
+{
+    double reach = 0;
+    for (const auto &filter : filters)
+    {
+        if (filter.kind == SpriteColorFilter::Kind::DropShadow &&
+            filter.shadowRgba[3] > 0.01)
+        {
+            reach = std::max(reach, filter.shadowBlur * 1.5 +
+                                        std::max(std::abs(filter.shadowX),
+                                                 std::abs(filter.shadowY)));
+        }
+    }
+    return static_cast<int>(std::ceil(reach));
+}
+
+QImage applySpritePose(const QImage &frame, const SpritePose &pose, int pad)
 {
     QImage filtered = applySpriteFilters(frame, pose.filters);
     if (pose.isIdentity())
@@ -923,7 +1217,7 @@ QImage applySpritePose(const QImage &frame, const SpritePose &pose)
         QPolygonF polygon;
         for (const auto &[x, y] : pose.clip)
         {
-            polygon << QPointF(x, y);
+            polygon << QPointF(x + pad, y + pad);
         }
         QPainterPath clipPath;
         clipPath.addPolygon(polygon);
@@ -942,7 +1236,10 @@ QImage applySpritePose(const QImage &frame, const SpritePose &pose)
 
     painter.setOpacity(std::clamp(pose.opacity, 0.0, 1.0));
     const auto &m = pose.matrix;
-    painter.setTransform(QTransform(m[0], m[1], m[2], m[3], m[4], m[5]));
+    // the matrix is in frame pixels; the image has `pad` more on each side
+    painter.translate(pad, pad);
+    painter.setTransform(QTransform(m[0], m[1], m[2], m[3], m[4], m[5]), true);
+    painter.translate(-pad, -pad);
     painter.drawImage(0, 0, filtered);
     painter.end();
 
@@ -959,13 +1256,24 @@ std::vector<SpriteFrame> sliceSpriteSheet(const QImage &sheet,
         return out;
     }
 
+    if (spec.hasImageLayers())
+    {
+        out.push_back(SpriteFrame{.image = composeImageLayers(sheet, spec),
+                                  .durationMs = 0});
+        return out;
+    }
+
     // QImage::copy() fills whatever lies outside of the sheet with zeroes,
     // which is only transparent for formats that have an alpha channel.
     const QImage source = sheet.convertToFormat(QImage::Format_ARGB32);
 
     size_t count = spec.offsets.size();
+    const int pad = spec.canvasSize.isEmpty() ? spec.glowMargin : 0;
     const QSize outSize =
-        spec.canvasSize.isEmpty() ? spec.frameSize : spec.canvasSize;
+        spec.canvasSize.isEmpty()
+            ? QSize(spec.frameSize.width() + 2 * pad,
+                    spec.frameSize.height() + 2 * pad)
+            : spec.canvasSize;
     const qint64 frameBytes =
         static_cast<qint64>(outSize.width()) * outSize.height() * 4;
     bool addRest = spec.playsOnce();
@@ -980,9 +1288,13 @@ std::vector<SpriteFrame> sliceSpriteSheet(const QImage &sheet,
     {
         QImage frame = copyFrame(source, spec.offsets[i], spec.frameSize,
                                     spec.tileX, spec.tileY);
+        if (pad > 0)
+        {
+            frame = padSpriteFrame(frame, pad);
+        }
         if (spec.hasPoses())
         {
-            frame = applySpritePose(frame, spec.poses[i]);
+            frame = applySpritePose(frame, spec.poses[i], pad);
         }
         else if (!spec.filters.empty())
         {
@@ -1004,9 +1316,13 @@ std::vector<SpriteFrame> sliceSpriteSheet(const QImage &sheet,
     {
         QImage rest = copyFrame(source, spec.restOffset, spec.frameSize,
                                 spec.tileX, spec.tileY);
+        if (pad > 0)
+        {
+            rest = padSpriteFrame(rest, pad);
+        }
         if (spec.hasPoses())
         {
-            rest = applySpritePose(rest, spec.restPose);
+            rest = applySpritePose(rest, spec.restPose, pad);
         }
         else if (!spec.filters.empty())
         {
@@ -1043,7 +1359,7 @@ PosedNativeFrames composePosedNativeFrames(
     sources.reserve(nativeCount);
     for (const auto &frame : native)
     {
-        sources.push_back(frame.image.convertToFormat(QImage::Format_ARGB32));
+        sources.push_back(padSpriteFrame(frame.image, spec.glowMargin));
     }
 
     const auto nativeDuration = [&](size_t i) -> qint64 {
@@ -1072,7 +1388,8 @@ PosedNativeFrames composePosedNativeFrames(
         for (size_t i = 0; i < nativeCount; i++)
         {
             out.frames.push_back(SpriteFrame{
-                .image = applySpritePose(sources[i], spec.poses.front()),
+                .image = applySpritePose(sources[i], spec.poses.front(),
+                                                spec.glowMargin),
                 .durationMs = static_cast<int>(nativeDuration(i)),
             });
         }
@@ -1096,7 +1413,7 @@ PosedNativeFrames composePosedNativeFrames(
             return it->second;
         }
         const auto &pose = pi == poseCount ? spec.restPose : spec.poses[pi];
-        auto image = applySpritePose(sources[ni], pose);
+        auto image = applySpritePose(sources[ni], pose, spec.glowMargin);
         cache.emplace(key, image);
         return image;
     };

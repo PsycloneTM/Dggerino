@@ -19,6 +19,9 @@
 #include "providers/bttv/BttvEmotes.hpp"
 #include "providers/emoji/Emojis.hpp"
 #include "providers/ffz/FfzEmotes.hpp"
+#include "providers/dgg/DggAssets.hpp"
+#include "providers/dgg/DggChannel.hpp"
+#include "providers/dgg/DggChatServer.hpp"
 #include "providers/kick/KickAccount.hpp"
 #include "providers/kick/KickChatServer.hpp"
 #include "providers/seventv/SeventvEmotes.hpp"
@@ -42,6 +45,8 @@
 #include <QTabWidget>
 
 #include <algorithm>
+#include <functional>
+#include <map>
 #include <utility>
 
 using namespace Qt::Literals;
@@ -355,6 +360,52 @@ EmoteMap filterEmoteMap(const QString &text, const QStringList &tags,
     }
 
     return filteredMap;
+}
+
+/// Adds the destiny.gg emotes that `keep` lets through: the ones everybody may
+/// use to `freeChannel`, the ones that need a subscription (by tier) or Patreon
+/// to `subChannel`.
+void addDggEmotes(const DggAssets &assets, Channel &freeChannel,
+                  Channel &subChannel,
+                  const std::function<bool(const EmotePtr &)> &keep)
+{
+    EmoteMap freeEmotes;
+    EmoteMap patreon;
+    std::map<int, EmoteMap> tiers;
+    for (const auto &entry : assets.menuEmotes())
+    {
+        if (!keep(entry.emote))
+        {
+            continue;
+        }
+        if (entry.patreonOnly)
+        {
+            patreon.emplace(entry.emote->name, entry.emote);
+        }
+        else if (entry.minimumSubTier > 0)
+        {
+            tiers[entry.minimumSubTier].emplace(entry.emote->name,
+                                                entry.emote);
+        }
+        else
+        {
+            freeEmotes.emplace(entry.emote->name, entry.emote);
+        }
+    }
+
+    if (!freeEmotes.empty())
+    {
+        addEmotes(freeChannel, freeEmotes, "Destiny.gg");
+    }
+    for (const auto &[tier, emotes] : tiers)
+    {
+        addEmotes(subChannel, emotes,
+                  u"Destiny.gg (Tier %1)"_s.arg(tier));
+    }
+    if (!patreon.empty())
+    {
+        addEmotes(subChannel, patreon, "Destiny.gg (Patreon)");
+    }
 }
 
 /// Extracts the search word and tags from the search input. If two search words
@@ -707,6 +758,7 @@ void EmotePopup::loadChannel(ChannelPtr channel)
     this->channel_ = std::move(channel);
     this->twitchChannel_ = dynamic_cast<TwitchChannel *>(this->channel_.get());
     this->kickChannel_ = dynamic_cast<KickChannel *>(this->channel_.get());
+    this->dggChannel_ = dynamic_cast<DggChannel *>(this->channel_.get());
 
     this->setWindowTitle("Emotes in #" + this->channel_->getName());
 
@@ -937,18 +989,29 @@ void EmotePopup::reloadEmotes()
             addEmotes(*subChannel, *map, "7TV (Personal)");
         }
     }
+    if (this->dggChannel_)
+    {
+        // destiny.gg: only its own emotes (no BTTV, FFZ or 7TV)
+        if (const auto *assets = getApp()->getDggChatServer()->assets())
+        {
+            addDggEmotes(*assets, *channelChannel, *subChannel,
+                         [](const EmotePtr &) {
+                             return true;
+                         });
+        }
+    }
     // global
-    if (getSettings()->enableBTTVGlobalEmotes)
+    if (!this->dggChannel_ && getSettings()->enableBTTVGlobalEmotes)
     {
         addEmotes(*globalChannel, *getApp()->getBttvEmotes()->emotes(),
                   "BetterTTV");
     }
-    if (getSettings()->enableFFZGlobalEmotes)
+    if (!this->dggChannel_ && getSettings()->enableFFZGlobalEmotes)
     {
         addEmotes(*globalChannel, *getApp()->getFfzEmotes()->emotes(),
                   "FrankerFaceZ");
     }
-    if (getSettings()->enableSevenTVGlobalEmotes)
+    if (!this->dggChannel_ && getSettings()->enableSevenTVGlobalEmotes)
     {
         addEmotes(*globalChannel, *getApp()->getSeventvEmotes()->globalEmotes(),
                   "7TV");
@@ -1144,6 +1207,17 @@ void EmotePopup::filterEmotes(const QString &searchText)
     {
         this->filterTwitchEmotes(searchChannel, searchWord, tags);
     }
+    else if (this->dggChannel_)
+    {
+        if (const auto *assets = getApp()->getDggChatServer()->assets())
+        {
+            addDggEmotes(*assets, *searchChannel, *searchChannel,
+                         [&](const EmotePtr &emote) {
+                             return emoteMatchesSearchAndTags(emote, searchWord,
+                                                              tags);
+                         });
+        }
+    }
 
     std::vector<EmojiPtr> filteredEmojis{};
     int emojiCount = 0;
@@ -1172,6 +1246,16 @@ void EmotePopup::filterEmotes(const QString &searchText)
 
 std::optional<EmotePtr> EmotePopup::findEmote(const EmoteName &name)
 {
+    if (this->dggChannel_)
+    {
+        const auto *assets = getApp()->getDggChatServer()->assets();
+        if (auto emote = assets ? assets->menuEmote(name.string) : nullptr)
+        {
+            return emote;
+        }
+        return std::nullopt;
+    }
+
     if (this->twitchChannel_)
     {
         auto emotesToTry = this->twitchChannel_->localTwitchEmotes();

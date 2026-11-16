@@ -576,3 +576,146 @@ TEST(DggEmoteCss, InfiniteAnimationsKeepLooping)
         EXPECT_FALSE(style.sprite.playsOnce());
     }
 }
+
+namespace {
+
+const char *const GLOW_CSS = R"CSS(
+.emote.Glowy {
+  width: 30px;
+  height: 30px;
+  filter: brightness(1.1) drop-shadow(0px 0px 3px #001eff);
+}
+.emote.Star {
+  width: 30px;
+  height: 30px;
+  animation: Star-anim 100ms 4;
+}
+@keyframes Star-anim {
+  0%, 100% { filter: contrast(1.2); }
+  50% { filter: contrast(1); }
+}
+.emote.Star::before {
+  content: "*";
+  font-size: 10px;
+  color: white;
+  position: absolute;
+  top: 5px;
+  left: 12px;
+  opacity: 0;
+  animation: Star-before 300ms 1 linear;
+}
+@keyframes Star-before {
+  0% { opacity: 1; filter: drop-shadow(0 0 3px white); }
+  100% { opacity: 0; }
+}
+)CSS";
+
+const DggEmoteCss &glowCss()
+{
+    static const DggEmoteCss parsed =
+        DggEmoteCss::parse(QString::fromUtf8(GLOW_CSS));
+    return parsed;
+}
+
+}  // namespace
+
+TEST(DggEmoteCss, DropShadowOfTheEmoteBecomesAFilterWithRoomAroundIt)
+{
+    const auto style = glowCss().resolve(QStringLiteral("Glowy"),
+                                         userContext("someone"), QSize(30, 30));
+    ASSERT_TRUE(style.valid);
+    ASSERT_EQ(style.sprite.filters.size(), 2U);
+    const auto &shadow = style.sprite.filters.back();
+    EXPECT_EQ(shadow.kind, SpriteColorFilter::Kind::DropShadow);
+    EXPECT_EQ(shadow.shadowBlur, 3.0);
+    EXPECT_EQ(shadow.shadowRgba[2], 255.0);
+    // 1.5 * blur, rounded up
+    EXPECT_EQ(style.sprite.glowMargin, 5);
+}
+
+TEST(DggEmoteCss, PseudoElementIsPlayedWithTheEmotesOwnPoseAnimation)
+{
+    const auto style = glowCss().resolve(QStringLiteral("Star"),
+                                         userContext("someone"), QSize(30, 30));
+    ASSERT_TRUE(style.valid);
+    ASSERT_TRUE(style.sprite.hasOverlays());
+    EXPECT_TRUE(style.sprite.isValid());
+    EXPECT_GT(style.sprite.offsets.size(), 1U);
+    EXPECT_EQ(style.sprite.overlays.size(), style.sprite.offsets.size());
+    EXPECT_EQ(style.sprite.poses.size(), style.sprite.offsets.size());
+    EXPECT_TRUE(style.sprite.playsOnce());
+    // the star fades out after 300 ms and the shake runs 4 * 100 ms
+    EXPECT_EQ(totalMs(style), 400);
+}
+
+namespace {
+
+// COGGERS as on the site: the spin is a transform animation, and a second
+// rule reverses it for every even emote of a message.
+const char *const COGGERS_CSS = R"CSS(
+.emote.COGGERS {
+    background-image: url("65f6c4a6484eb.png");
+    height: 32px;
+    width: 32px;
+}
+.msg-chat .emote.COGGERS {
+    margin-top: -32px;
+    top: 8px;
+}
+@keyframes COGGERS-anim {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(1080deg); }
+}
+@keyframes COGGERS-anim-hover {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+.emote.COGGERS {
+    animation: COGGERS-anim 2.4s 1 cubic-bezier(0.15, 0, 0.85, 1);
+}
+.emote.COGGERS:hover {
+    animation: COGGERS-anim-hover 0.8s infinite linear;
+}
+.emote.COGGERS:nth-child(even) {
+    animation-direction: reverse;
+}
+)CSS";
+
+const DggEmoteCss &coggersCss()
+{
+    static const DggEmoteCss parsed =
+        DggEmoteCss::parse(QString::fromUtf8(COGGERS_CSS));
+    return parsed;
+}
+
+}  // namespace
+
+TEST(DggEmoteCss, CoggersSpinsInEveryPositionOfAMessage)
+{
+    // first of the message: odd, spins forwards
+    auto first = userContext("someone");
+    first.elements = {QStringLiteral("COGGERS"), QStringLiteral("COGGERS")};
+    first.elementIndex = 0;
+    const auto odd = coggersCss().resolve(QStringLiteral("COGGERS"), first,
+                                          QSize(32, 32));
+    ASSERT_TRUE(odd.valid);
+    EXPECT_TRUE(odd.animated());
+    EXPECT_EQ(odd.sprite.loopCount, 1);
+
+    // second: even, `animation-direction: reverse` used to throw the whole
+    // animation away
+    auto second = first;
+    second.elementIndex = 1;
+    const auto even = coggersCss().resolve(QStringLiteral("COGGERS"), second,
+                                           QSize(32, 32));
+    ASSERT_TRUE(even.valid);
+    EXPECT_TRUE(even.animated());
+    EXPECT_EQ(even.sprite.loopCount, 1);
+    EXPECT_EQ(even.sprite.poses.size(), odd.sprite.poses.size());
+    // reversed: a quarter of the way in, the two aren't turned the same way
+    // (frame 0 of both is upright, as 1080 degrees is three whole turns)
+    ASSERT_GT(even.sprite.poses.size(), 8U);
+    const size_t quarter = even.sprite.poses.size() / 4;
+    EXPECT_NE(even.sprite.poses[quarter].matrix,
+              odd.sprite.poses[quarter].matrix);
+}

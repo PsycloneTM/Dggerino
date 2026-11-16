@@ -1,8 +1,10 @@
 #include "providers/dgg/DggEmoteCss.hpp"
 
 #include "providers/dgg/DggCssAnimation.hpp"
+#include "providers/dgg/DggCombo.hpp"
 
 #include <algorithm>
+#include <regex>
 #include <array>
 #include <cctype>
 #include <charconv>
@@ -11,6 +13,7 @@
 #include <cstdlib>
 #include <optional>
 #include <string_view>
+#include <variant>
 #include <system_error>
 #include <utility>
 
@@ -1065,6 +1068,7 @@ Analysis analyseSelector(string_view selector)
         const bool isGreentext = contains(c.classes, "greentext");
         const bool isMessage =
             contains(c.classes, "msg-chat") ||
+            contains(c.classes, "msg-emote") ||
             (c.classes.empty() && !c.attrs.empty());
         const bool isUser = contains(c.classes, "user");
         const bool isText = c.classes.size() == 1 && c.classes[0] == "text";
@@ -1073,16 +1077,17 @@ Analysis analyseSelector(string_view selector)
         {
             for (const auto &attr : c.attrs)
             {
-                if (attr.name != "data-username" || attr.op != "=")
+                // the nick's name is only compared for equality; the combo
+                // attributes of a combo line take every operator
+                const bool known = attr.name == "data-username"
+                                       ? attr.op == "="
+                                       : (attr.name == "data-combo" ||
+                                          attr.name == "data-combo-group");
+                if (!known)
                 {
                     out.rejected = "attribute " + attr.name;
                     return out;
                 }
-            }
-            if (contains(c.classes, "msg-emote"))
-            {
-                out.rejected = "combo message";
-                return out;
             }
             if (contains(c.classes, "text"))
             {
@@ -1160,6 +1165,8 @@ struct Node {
     char tag = 0;
     std::vector<string> classes;
     string username;
+    /// The attributes of a combo line (`data-combo`, `data-combo-group`).
+    std::vector<std::pair<string, string>> attrs;
     int parent = -1;
     /// Position among the parent's children.
     int pos = 0;
@@ -1193,23 +1200,41 @@ Dom buildDom(const string &emote, const DggEmoteContext &ctx)
     Node m;
     m.kind = 'M';
     m.tag = 'd';
-    m.classes = {"msg-chat", "msg-user"};
-    for (const auto &cls : ctx.messageClasses)
+    if (ctx.comboMessage)
     {
-        m.classes.push_back(cls.toStdString());
+        // a combo line has no author: no nick, no `data-username`
+        m.classes = {"msg-chat", "msg-emote"};
+        if (ctx.comboCount > 0)
+        {
+            m.attrs.emplace_back("data-combo",
+                                 std::to_string(ctx.comboCount));
+            m.attrs.emplace_back("data-combo-group",
+                                 dggComboGroup(ctx.comboCount).toStdString());
+        }
     }
-    m.username = ctx.username.toStdString();
+    else
+    {
+        m.classes = {"msg-chat", "msg-user"};
+        for (const auto &cls : ctx.messageClasses)
+        {
+            m.classes.push_back(cls.toStdString());
+        }
+        m.username = ctx.username.toStdString();
+    }
     const int mIndex = addNode(dom, std::move(m), -1);
 
-    Node u;
-    u.kind = 'U';
-    u.tag = 'a';
-    u.classes = {"user"};
-    if (!ctx.nickColorFlair.isEmpty())
+    if (!ctx.comboMessage)
     {
-        u.classes.push_back(ctx.nickColorFlair.toStdString());
+        Node u;
+        u.kind = 'U';
+        u.tag = 'a';
+        u.classes = {"user"};
+        if (!ctx.nickColorFlair.isEmpty())
+        {
+            u.classes.push_back(ctx.nickColorFlair.toStdString());
+        }
+        addNode(dom, std::move(u), mIndex);
     }
-    addNode(dom, std::move(u), mIndex);
 
     Node t;
     t.kind = 'T';
@@ -1217,7 +1242,7 @@ Dom buildDom(const string &emote, const DggEmoteContext &ctx)
     t.classes = {"text"};
     int container = addNode(dom, std::move(t), mIndex);
 
-    if (ctx.greentext)
+    if (ctx.greentext && !ctx.comboMessage)
     {
         Node g;
         g.kind = 'G';
@@ -1231,7 +1256,8 @@ Dom buildDom(const string &emote, const DggEmoteContext &ctx)
     QStringList elements = ctx.elements;
     int index = ctx.elementIndex;
     const QString name = QString::fromStdString(emote);
-    if (index < 0 || index >= elements.size() || elements[index] != name)
+    if (ctx.comboMessage || index < 0 || index >= elements.size() ||
+        elements[index] != name)
     {
         elements = QStringList{name};
         index = 0;
@@ -1434,6 +1460,93 @@ bool evalPseudo(const PseudoClass &pc, const Dom &dom, int nodeIndex)
     }
 }
 
+/// One attribute selector against the message element, with the operators CSS
+/// has (`[a]`, `=`, `~=`, `|=`, `^=`, `$=`, `*=`).
+bool messageAttrMatches(const Attr &attr, const Node &node)
+{
+    if (attr.name == "data-username")
+    {
+        // (only `=` gets here, see the analysis); a combo line has no author
+        return attr.op == "=" && !node.username.empty() &&
+               attr.value == node.username;
+    }
+
+    const string *value = nullptr;
+    for (const auto &[name, text] : node.attrs)
+    {
+        if (name == attr.name)
+        {
+            value = &text;
+            break;
+        }
+    }
+    if (value == nullptr)
+    {
+        return false;
+    }
+
+    const auto &op = attr.op;
+    const auto &want = attr.value;
+    if (op.empty())
+    {
+        return true;
+    }
+    if (op == "=")
+    {
+        return *value == want;
+    }
+    if (want.empty())
+    {
+        // `^=`, `$=`, `*=` and `~=` with nothing to look for match nothing
+        return op == "|=" && value->empty();
+    }
+    if (op == "~=")
+    {
+        // one of the white-space separated words
+        size_t i = 0;
+        while (i < value->size())
+        {
+            while (i < value->size() && isSpace((*value)[i]))
+            {
+                i++;
+            }
+            const size_t start = i;
+            while (i < value->size() && !isSpace((*value)[i]))
+            {
+                i++;
+            }
+            if (i > start && value->compare(start, i - start, want) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (op == "|=")
+    {
+        return *value == want ||
+               (value->size() > want.size() &&
+                value->compare(0, want.size(), want) == 0 &&
+                (*value)[want.size()] == '-');
+    }
+    if (op == "^=")
+    {
+        return value->size() >= want.size() &&
+               value->compare(0, want.size(), want) == 0;
+    }
+    if (op == "$=")
+    {
+        return value->size() >= want.size() &&
+               value->compare(value->size() - want.size(), want.size(),
+                              want) == 0;
+    }
+    if (op == "*=")
+    {
+        return value->find(want) != NPOS;
+    }
+    return false;
+}
+
 bool compoundMatches(const Compound &c, const Dom &dom, int nodeIndex)
 {
     const Node &node = dom.nodes[static_cast<size_t>(nodeIndex)];
@@ -1462,8 +1575,7 @@ bool compoundMatches(const Compound &c, const Dom &dom, int nodeIndex)
             {
                 for (const auto &attr : c.attrs)
                 {
-                    if (attr.name != "data-username" || attr.op != "=" ||
-                        attr.value != node.username)
+                    if (!messageAttrMatches(attr, node))
                     {
                         matches = false;
                         break;
@@ -1821,6 +1933,17 @@ void setProperty(Props &props, const string &name, const string &value)
         props["animation-raw"] = value;
         // the shorthand resets the delay a longhand set before it
         props.erase("animation-delay-override");
+        props.erase("animation-direction-override");
+        return;
+    }
+    if (name == "animation-direction" && props.count("animation-raw") != 0)
+    {
+        // `animation: COGGERS-anim 2.4s 1 ...;` followed by
+        // `animation-direction: reverse;` (a `:nth-child(even)` rule) keeps
+        // the list and only changes the direction, which is applied to the
+        // parsed list (see parseAnimationsOf())
+        props["animation-direction-override"] = value;
+        props[name] = value;
         return;
     }
     if (name == "animation-delay" && props.count("animation-raw") != 0)
@@ -1833,12 +1956,14 @@ void setProperty(Props &props, const string &name, const string &value)
         return;
     }
     if (name.rfind("animation-", 0) == 0 && name != "animation-raw" &&
-        name != "animation-delay-override")
+        name != "animation-delay-override" &&
+        name != "animation-direction-override")
     {
         // a longhand changes what the shorthand said, so the raw list is no
         // longer what applies
         props.erase("animation-raw");
         props.erase("animation-delay-override");
+        props.erase("animation-direction-override");
     }
 
     if (name == "background-position")
@@ -1939,6 +2064,35 @@ std::optional<double> positionPx(string_view raw, const Props &props,
     return parseLengthPx(value);
 }
 
+/// `SpriteColorFilter` <-> the animation engine's `FilterFn` (the kinds are
+/// numbered alike, see the static_assert below).
+SpriteColorFilter toSpriteFilter(const dggcss::anim::FilterFn &fn)
+{
+    return SpriteColorFilter{
+        .kind = static_cast<SpriteColorFilter::Kind>(fn.kind),
+        .amount = fn.amount,
+        .shadowX = fn.x,
+        .shadowY = fn.y,
+        .shadowBlur = fn.blur,
+        .shadowRgba = fn.rgba,
+    };
+}
+
+dggcss::anim::FilterFn toAnimFilter(const SpriteColorFilter &filter)
+{
+    return dggcss::anim::FilterFn{
+        .kind = static_cast<dggcss::anim::FilterKind>(filter.kind),
+        .amount = filter.amount,
+        .x = filter.shadowX,
+        .y = filter.shadowY,
+        .blur = filter.shadowBlur,
+        .rgba = filter.shadowRgba,
+    };
+}
+
+/// A glow reaches this far out of an emote at most (px).
+constexpr int MAX_GLOW_MARGIN = 12;
+
 void parseFilters(string_view raw, const Props &props,
                   std::vector<SpriteColorFilter> &out,
                   std::vector<string> &ignored)
@@ -2031,6 +2185,21 @@ void parseFilters(string_view raw, const Props &props,
         else if (name == "hue-rotate")
         {
             filter.kind = Kind::HueRotate;
+        }
+        else if (name == "drop-shadow")
+        {
+            const auto parsed = dggcss::anim::parseDeclaration(
+                "filter", "drop-shadow(" + string(args) + ")");
+            const auto *list =
+                parsed ? std::get_if<dggcss::anim::FilterList>(&parsed->second)
+                       : nullptr;
+            if (list == nullptr || list->size() != 1)
+            {
+                ignored.emplace_back("filter drop-shadow");
+                continue;
+            }
+            out.push_back(toSpriteFilter(list->front()));
+            continue;
         }
         else
         {
@@ -2152,7 +2321,9 @@ static_assert(static_cast<int>(anim::FilterKind::Brightness) ==
               static_cast<int>(anim::FilterKind::Invert) ==
                   static_cast<int>(SpriteColorFilter::Kind::Invert) &&
               static_cast<int>(anim::FilterKind::Opacity) ==
-                  static_cast<int>(SpriteColorFilter::Kind::Opacity),
+                  static_cast<int>(SpriteColorFilter::Kind::Opacity) &&
+              static_cast<int>(anim::FilterKind::DropShadow) ==
+                  static_cast<int>(SpriteColorFilter::Kind::DropShadow),
               "anim::FilterKind and SpriteColorFilter::Kind must match");
 
 SpritePose poseOf(const anim::Computed &state, const anim::Box &box)
@@ -2163,46 +2334,10 @@ SpritePose poseOf(const anim::Computed &state, const anim::Box &box)
     pose.opacity = state.opacity;
     for (const auto &fn : state.filter)
     {
-        pose.filters.push_back(SpriteColorFilter{
-            .kind = static_cast<SpriteColorFilter::Kind>(fn.kind),
-            .amount = fn.amount,
-        });
+        pose.filters.push_back(toSpriteFilter(fn));
     }
     pose.clip = anim::clipPx(state.clip, box);
     return pose;
-}
-
-/// `filter` with its `drop-shadow()` functions cut out (Sippy has a 0.5px one
-/// on every stop; the baker can't draw them). `none` if nothing is left.
-string withoutDropShadows(string_view filter)
-{
-    string out;
-    size_t i = 0;
-    while (i < filter.size())
-    {
-        if (filter.compare(i, 12, "drop-shadow(") == 0)
-        {
-            int depth = 0;
-            size_t j = i + 11;
-            for (; j < filter.size(); j++)
-            {
-                if (filter[j] == '(')
-                {
-                    depth++;
-                }
-                else if (filter[j] == ')' && --depth == 0)
-                {
-                    break;
-                }
-            }
-            i = j + 1;
-            continue;
-        }
-        out.push_back(filter[i]);
-        i++;
-    }
-    const auto trimmed = string(trimView(out));
-    return trimmed.empty() ? string("none") : trimmed;
 }
 
 /// `background-position: x y` of a keyframe stop as the `translate` of the
@@ -2265,6 +2400,34 @@ std::optional<std::vector<anim::AnimationSpec>> parseAnimationsOf(
     if (!specs)
     {
         return specs;
+    }
+    if (const auto dir = props.find("animation-direction-override");
+        dir != props.end())
+    {
+        const auto resolved = resolveVars(dir->second, props);
+        const string text = resolved ? *resolved : dir->second;
+        const auto entries = splitTopLevel(text, ',');
+        for (size_t i = 0; !entries.empty() && i < specs->size(); i++)
+        {
+            const string entry = toLower(trimView(entries[i % entries.size()]));
+            using D = anim::AnimationSpec::Direction;
+            if (entry == "normal")
+            {
+                (*specs)[i].direction = D::Normal;
+            }
+            else if (entry == "reverse")
+            {
+                (*specs)[i].direction = D::Reverse;
+            }
+            else if (entry == "alternate")
+            {
+                (*specs)[i].direction = D::Alternate;
+            }
+            else if (entry == "alternate-reverse")
+            {
+                (*specs)[i].direction = D::AlternateReverse;
+            }
+        }
     }
     const auto it = props.find("animation-delay-override");
     if (it != props.end())
@@ -2352,13 +2515,6 @@ void bakeAnimations(const Props &props, const Keyframes &keyframes,
                             "picture");
                     }
                 }
-                else if (name == "filter" &&
-                         text.find("drop-shadow(") != string::npos)
-                {
-                    text = withoutDropShadows(text);
-                    approximations.push_back("animation " + spec.name +
-                                             ": drop-shadow left out");
-                }
                 frame.decls.push_back(anim::KeyframeDecl{name, text});
             }
             frames.push_back(std::move(frame));
@@ -2414,10 +2570,7 @@ void bakeAnimations(const Props &props, const Keyframes &keyframes,
     }
     for (const auto &filter : style.sprite.filters)
     {
-        base.filter.push_back(anim::FilterFn{
-            .kind = static_cast<anim::FilterKind>(filter.kind),
-            .amount = filter.amount,
-        });
+        base.filter.push_back(toAnimFilter(filter));
     }
 
     const anim::Box box{
@@ -2564,10 +2717,7 @@ void applyStaticTransform(const Props &props, DggEmoteStyle &style,
     }
     for (const auto &filter : style.sprite.filters)
     {
-        base.filter.push_back(anim::FilterFn{
-            .kind = static_cast<anim::FilterKind>(filter.kind),
-            .amount = filter.amount,
-        });
+        base.filter.push_back(toAnimFilter(filter));
     }
 
     const anim::Box box{
@@ -2626,9 +2776,22 @@ DggEmoteStyle computeStyle(const Props &props, const Keyframes &keyframes,
             const string_view text = trimView(*resolved);
             const auto space = text.find(' ');
             const auto first = parseLengthPx(text.substr(0, space));
-            const auto second = space == string_view::npos
-                                    ? first
-                                    : parseLengthPx(text.substr(space + 1));
+            // one value is the width; the height is `auto` (the proportions
+            // of the image). Same as a square size for a square image.
+            std::optional<double> second;
+            if (space != string_view::npos)
+            {
+                const auto rest = trimView(text.substr(space + 1));
+                second = rest == "auto" ? first : parseLengthPx(rest);
+            }
+            else if (first && !sheetSize.isEmpty())
+            {
+                second = *first * sheetSize.height() / sheetSize.width();
+            }
+            else
+            {
+                second = first;
+            }
             if (first && second && *first >= 1 && *second >= 1)
             {
                 style.backgroundSize =
@@ -2973,10 +3136,6 @@ anim::Computed pseudoBase(const Props &props)
         {
             continue;
         }
-        if (string_view(name) == "filter")
-        {
-            resolved = withoutDropShadows(*resolved);
-        }
         if (auto parsed = anim::parseDeclaration(name, *resolved))
         {
             anim::setProp(base, parsed->first, std::move(parsed->second));
@@ -3210,10 +3369,7 @@ SpriteOverlay overlayOf(const Props &props, const anim::Computed &state,
     o.opacity = state.opacity;
     for (const auto &fn : state.filter)
     {
-        o.filters.push_back(SpriteColorFilter{
-            .kind = static_cast<SpriteColorFilter::Kind>(fn.kind),
-            .amount = fn.amount,
-        });
+        o.filters.push_back(toSpriteFilter(fn));
     }
     for (const auto &shadow : state.boxShadow)
     {
@@ -3337,17 +3493,27 @@ void applyPseudoElements(const Props &emote, const Props *beforeProps,
         return;
     }
 
-    if (sprite.offsets.size() != 1 ||
-        (sprite.hasPoses() &&
-         !std::all_of(sprite.poses.begin(), sprite.poses.end(),
-                      [&](const SpritePose &pose) {
-                          return pose == sprite.poses.front();
-                      })))
+    // An emote that only animates its own pose (a filter flash, a shake) and
+    // plays a limited number of times (gachiGASM, SNAP, SOTRIGGERED) is
+    // played together with its pseudo-elements: the two timelines are merged.
+    // One that steps through its sprite sheet, or loops for ever, isn't.
+    const bool single = sprite.offsets.size() == 1;
+    const bool sameOffsets =
+        std::all_of(sprite.offsets.begin(), sprite.offsets.end(),
+                    [&](const QPoint &p) { return p == sprite.offsets.front(); });
+    const bool posesDiffer =
+        sprite.hasPoses() &&
+        !std::all_of(sprite.poses.begin(), sprite.poses.end(),
+                     [&](const SpritePose &pose) {
+                         return pose == sprite.poses.front();
+                     });
+    if (!single && !(sameOffsets && posesDiffer && sprite.loopCount > 0))
     {
         style.notes.append(QStringLiteral(
             "pseudo-elements not drawn: the emote is animated itself"));
         return;
     }
+    const bool mergeOwn = !single;
 
     const auto overlaysOf = [&](const std::vector<anim::Computed> &states) {
         std::vector<SpriteOverlay> list;
@@ -3371,7 +3537,118 @@ void applyPseudoElements(const Props &emote, const Props *beforeProps,
 
     string problem;
     const auto baked = anim::bakeLayers(inputs, box, anim::BakeOptions{}, problem);
-    if (baked)
+    if (baked && mergeOwn)
+    {
+        // the emote's own poses, `loopCount` times over
+        constexpr int MAX_PLAYS = 50;
+        constexpr int MIN_MS = 20;
+        constexpr size_t MAX_SEGMENTS = 600;
+        const auto &ownPoses = sprite.poses;
+        const auto &ownMs = sprite.durationsMs;
+        std::vector<int> ownStart;  // start of each frame within one play
+        int cycle = 0;
+        for (const int ms : ownMs)
+        {
+            ownStart.push_back(cycle);
+            cycle += std::max(MIN_MS, ms);
+        }
+        const int plays = std::min(sprite.loopCount, MAX_PLAYS);
+        const int ownTotal = cycle * plays;
+
+        std::vector<int> overlayStart;
+        int overlayTotal = 0;
+        for (const auto &frame : baked->frames)
+        {
+            overlayStart.push_back(overlayTotal);
+            overlayTotal += std::max(MIN_MS, frame.durationMs);
+        }
+
+        std::vector<int> bounds{0};
+        {
+            std::vector<int> all;
+            for (int play = 0; play < plays; play++)
+            {
+                for (const int start : ownStart)
+                {
+                    all.push_back(play * cycle + start);
+                }
+            }
+            for (const int start : overlayStart)
+            {
+                all.push_back(start);
+            }
+            all.push_back(ownTotal);
+            all.push_back(overlayTotal);
+            std::sort(all.begin(), all.end());
+            for (const int t : all)
+            {
+                // two moments closer than a frame can last are one
+                if (t - bounds.back() >= MIN_MS)
+                {
+                    bounds.push_back(t);
+                }
+            }
+        }
+        const int total = std::max(ownTotal, overlayTotal);
+        if (bounds.size() < 2 || bounds.size() > MAX_SEGMENTS || total <= 0)
+        {
+            style.notes.append(QStringLiteral(
+                "pseudo-elements not drawn: too many frames to combine with "
+                "the emote's own animation"));
+            return;
+        }
+        if (bounds.back() < total)
+        {
+            bounds.push_back(total);
+        }
+
+        const auto indexAt = [](const std::vector<int> &starts, int t) {
+            size_t k = 0;
+            while (k + 1 < starts.size() && starts[k + 1] <= t)
+            {
+                k++;
+            }
+            return k;
+        };
+
+        std::vector<SpritePose> poses;
+        std::vector<std::vector<SpriteOverlay>> overlays;
+        std::vector<int> durations;
+        for (size_t i = 0; i + 1 < bounds.size(); i++)
+        {
+            const int t = bounds[i];
+            poses.push_back(t >= ownTotal
+                                ? sprite.restPose
+                                : ownPoses[indexAt(ownStart, t % cycle)]);
+            overlays.push_back(t >= overlayTotal
+                                   ? overlaysOf(baked->rest)
+                                   : overlaysOf(baked->frames[indexAt(
+                                                                  overlayStart,
+                                                                  t)]
+                                                    .layers));
+            durations.push_back(bounds[i + 1] - t);
+        }
+        if (poses.size() == 1)
+        {
+            poses.push_back(poses.front());
+            overlays.push_back(overlays.front());
+            durations.push_back(durations.front());
+        }
+        const auto rest = sprite.restPose;
+        sprite.offsets.assign(poses.size(), offset);
+        sprite.durationsMs = std::move(durations);
+        sprite.poses = std::move(poses);
+        sprite.overlays = std::move(overlays);
+        sprite.restOverlays = overlaysOf(baked->rest);
+        sprite.restPose = rest;
+        sprite.loopCount = 1;
+        sprite.restOffset = offset;
+        if (baked->truncated)
+        {
+            notes.emplace_back("pseudo-element animation: cut off after 10 s");
+        }
+    }
+    else if (baked)
     {
         auto frames = baked->frames;
         if (frames.size() == 1)
@@ -3409,7 +3686,15 @@ void applyPseudoElements(const Props &emote, const Props *beforeProps,
             states.push_back(
                 anim::computeAt(input.animations, input.base, 0, box));
         }
-        sprite.overlays.assign(1, overlaysOf(states));
+        if (mergeOwn)
+        {
+            sprite.overlays.assign(sprite.offsets.size(), overlaysOf(states));
+            sprite.restOverlays = overlaysOf(states);
+        }
+        else
+        {
+            sprite.overlays.assign(1, overlaysOf(states));
+        }
     }
     else
     {
@@ -3455,6 +3740,249 @@ void applyPseudoElements(const Props &emote, const Props *beforeProps,
     }
 }
 
+/// `background-size` as pixels. A single value is the width; the height is
+/// `auto`, i.e. keeps the proportions of the image.
+std::optional<QSizeF> parseBackgroundSizeAuto(string_view raw,
+                                              const Props &props,
+                                              QSize sheetSize)
+{
+    const auto resolved = resolveVars(raw, props);
+    if (!resolved || sheetSize.isEmpty())
+    {
+        return std::nullopt;
+    }
+    const string_view text = trimView(*resolved);
+    const auto space = text.find(' ');
+    const auto first = parseLengthPx(text.substr(0, space));
+    if (!first || *first < 1)
+    {
+        return std::nullopt;
+    }
+    double height = *first * sheetSize.height() / sheetSize.width();
+    if (space != string_view::npos)
+    {
+        const auto rest = trimView(text.substr(space + 1));
+        if (rest != "auto")
+        {
+            const auto second = parseLengthPx(rest);
+            if (!second || *second < 1)
+            {
+                return std::nullopt;
+            }
+            height = *second;
+        }
+    }
+    return QSizeF(*first, height);
+}
+
+/// An emote of a combo line whose box is made of several copies of its image
+/// (ARRIVE): the emote itself is wider than the image and repeats it, and its
+/// `::before` / `::after` are blocks in its flow that inherit its background
+/// and draw more copies, brighter, on top. `.emote` clips all of it to its
+/// box. Fills `style.sprite.imageLayers` (and the mask) and returns true if it
+/// applies: some pseudo-element is a static box with content, or the emote has
+/// a `mask-image`. Pseudo-elements with `position: absolute` are left to
+/// applyPseudoElements().
+bool applyImageLayers(const Props &emote, const Props *beforeProps,
+                      const Props *afterProps, QSize sheetSize,
+                      DggEmoteStyle &style)
+{
+    if (!style.valid || sheetSize.isEmpty())
+    {
+        return false;
+    }
+    const auto text = [](const Props &p, const char *name) -> const string * {
+        const auto it = p.find(name);
+        return it == p.end() ? nullptr : &it->second;
+    };
+    const auto isStaticBox = [&](const Props *p) {
+        if (p == nullptr)
+        {
+            return false;
+        }
+        const auto *content = text(*p, "content");
+        const auto *display = text(*p, "display");
+        const auto *position = text(*p, "position");
+        return content != nullptr && trimView(*content) != "none" &&
+               (display == nullptr || trimView(*display) != "none") &&
+               (position == nullptr || trimView(*position) != "absolute");
+    };
+    const bool before = isStaticBox(beforeProps);
+    const bool after = isStaticBox(afterProps);
+    const auto *maskRaw = text(emote, "mask-image");
+    std::optional<SpriteRadialMask> mask;
+    if (maskRaw != nullptr)
+    {
+        // radial-gradient(black 65%, transparent 80%)
+        static const std::regex re(
+            R"(radial-gradient\(\s*black\s+([0-9.]+)%\s*,\s*transparent\s+([0-9.]+)%\s*\))");
+        std::smatch m;
+        const string value = toLower(*maskRaw);
+        if (std::regex_search(value, m, re))
+        {
+            mask = SpriteRadialMask{std::stod(m[1].str()),
+                                    std::stod(m[2].str())};
+        }
+    }
+    if (!before && !after && !mask)
+    {
+        return false;
+    }
+
+    std::vector<string> notes;
+    const double boxW = style.frameSize.width();
+    const double boxH = style.frameSize.height();
+
+    // `background-repeat` of one element: its own tokens, else (for a
+    // pseudo-element with `background: inherit`) the emote's, else `repeat`
+    const auto repeatOf = [&](const Props &p, bool inherit, bool &tileX,
+                              bool &tileY) {
+        const Props *from = &p;
+        if (text(p, "background-repeat") == nullptr)
+        {
+            if (!inherit)
+            {
+                tileX = tileY = true;
+                return;
+            }
+            from = &emote;
+        }
+        tileX = tileY = true;
+        const auto *raw = text(*from, "background-repeat");
+        if (raw == nullptr)
+        {
+            return;
+        }
+        const auto tokens = splitWhitespace(toLower(*raw));
+        if (tokens.size() == 1)
+        {
+            tileX = tokens[0] == "repeat" || tokens[0] == "repeat-x";
+            tileY = tokens[0] == "repeat" || tokens[0] == "repeat-y";
+        }
+        else if (tokens.size() >= 2)
+        {
+            tileX = tokens[0] == "repeat";
+            tileY = tokens[1] == "repeat";
+        }
+    };
+
+    const auto makeLayer = [&](const Props &p, bool inherit,
+                               const QRectF &box) -> SpriteImageLayer {
+        SpriteImageLayer layer;
+        layer.box = box;
+        const auto pick = [&](const char *name) -> const string * {
+            if (const auto *v = text(p, name))
+            {
+                return v;
+            }
+            return inherit ? text(emote, name) : nullptr;
+        };
+        if (const auto *size = pick("background-size"))
+        {
+            if (const auto parsed =
+                    parseBackgroundSizeAuto(*size, p, sheetSize))
+            {
+                layer.imageSize = *parsed;
+            }
+        }
+        const QSizeF drawn =
+            layer.imageSize.isEmpty() ? QSizeF(sheetSize) : layer.imageSize;
+        if (const auto *x = pick("background-position-x"))
+        {
+            if (const auto v = positionPx(*x, p, box.width(), drawn.width()))
+            {
+                layer.imagePos.setX(*v);
+            }
+        }
+        if (const auto *y = pick("background-position-y"))
+        {
+            if (const auto v = positionPx(*y, p, box.height(), drawn.height()))
+            {
+                layer.imagePos.setY(*v);
+            }
+        }
+        repeatOf(p, inherit, layer.tileX, layer.tileY);
+        if (const auto *filter = text(p, "filter"))
+        {
+            parseFilters(*filter, p, layer.filters, notes);
+        }
+        if (const auto *opacity = text(p, "opacity"))
+        {
+            if (const auto v = parseNumber(trimView(*opacity)))
+            {
+                layer.opacity = *v;
+            }
+        }
+        return layer;
+    };
+
+    std::vector<SpriteImageLayer> layers;
+    layers.push_back(makeLayer(emote, false, QRectF(0, 0, boxW, boxH)));
+
+    // the pseudo-elements are blocks one below the other in the emote
+    const auto lengthOf = [&](const Props &p, const char *name) {
+        const auto *raw = text(p, name);
+        if (raw == nullptr)
+        {
+            return 0.0;
+        }
+        const auto resolved = resolveVars(*raw, p);
+        return resolved ? parseLengthPx(*resolved).value_or(0.0) : 0.0;
+    };
+    double flowY = 0;
+    double previousBottomMargin = 0;
+    bool first = true;
+    for (const Props *p : {before ? beforeProps : nullptr,
+                           after ? afterProps : nullptr})
+    {
+        if (p == nullptr)
+        {
+            continue;
+        }
+        const double marginTop = lengthOf(*p, "margin-top");
+        const double marginLeft = lengthOf(*p, "margin-left");
+        const double w = lengthOf(*p, "width");
+        const double h = lengthOf(*p, "height");
+        if (w < 1 || h < 1)
+        {
+            notes.emplace_back("pseudo-element without a size");
+            continue;
+        }
+        // the margins of neighbouring blocks collapse; the first one is
+        // inside a box that clips, so its margin stays
+        double gap = marginTop;
+        if (!first)
+        {
+            const double a = previousBottomMargin;
+            const double b = marginTop;
+            gap = (a >= 0 && b >= 0) ? std::max(a, b)
+                  : (a < 0 && b < 0) ? std::min(a, b)
+                                     : a + b;
+        }
+        const double top = flowY + gap;
+        const auto *bg = text(*p, "background");
+        const bool inherit = bg != nullptr && trimView(*bg) == "inherit";
+        layers.push_back(makeLayer(*p, inherit, QRectF(marginLeft, top, w, h)));
+        flowY = top + h;
+        previousBottomMargin = lengthOf(*p, "margin-bottom");
+        first = false;
+    }
+
+    style.sprite.imageLayers = std::move(layers);
+    style.sprite.mask = mask;
+    style.sprite.filters.clear();
+    style.sprite.offsets.assign(1, QPoint(0, 0));
+    style.sprite.durationsMs.assign(1, 0);
+    style.backgroundSize = QSize();
+    style.notes.removeIf(
+        [](const QString &note) { return note == QStringLiteral("mask-image"); });
+    for (const auto &note : notes)
+    {
+        style.notes.append(QString::fromStdString(note));
+    }
+    return true;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -3466,7 +3994,8 @@ bool DggEmoteStyle::isWholeImage(QSize sheetSize) const
     return this->valid && !sheetSize.isEmpty() && !this->sprite.hasPoses() &&
            this->sprite.offsets.size() == 1 &&
            this->sprite.offsets[0] == QPoint(0, 0) &&
-           this->frameSize == sheetSize && this->sprite.filters.empty();
+           this->frameSize == sheetSize && this->sprite.filters.empty() &&
+           !this->sprite.hasImageLayers();
 }
 
 QString DggEmoteStyle::cacheKey() const
@@ -3704,11 +4233,28 @@ DggEmoteStyle DggEmoteCss::resolve(const QString &emote,
     }
 
     auto style = computeStyle(props, this->keyframes_, sheetSize);
-    if (style.valid && (hasPseudo[0] || hasPseudo[1]))
+    // combo lines whose box is made of several copies of the image
+    const bool layered =
+        context.comboMessage && style.valid &&
+        applyImageLayers(props, hasPseudo[0] ? &pseudoProps[0] : nullptr,
+                         hasPseudo[1] ? &pseudoProps[1] : nullptr, sheetSize,
+                         style);
+    if (!layered && style.valid && (hasPseudo[0] || hasPseudo[1]))
     {
         applyPseudoElements(props, hasPseudo[0] ? &pseudoProps[0] : nullptr,
                             hasPseudo[1] ? &pseudoProps[1] : nullptr,
                             this->keyframes_, style);
+    }
+    if (style.valid && style.sprite.canvasSize.isEmpty())
+    {
+        // room around the frame for the glow of a drop-shadow()
+        int reach = dropShadowReach(style.sprite.filters);
+        for (const auto &pose : style.sprite.poses)
+        {
+            reach = std::max(reach, dropShadowReach(pose.filters));
+        }
+        reach = std::max(reach, dropShadowReach(style.sprite.restPose.filters));
+        style.sprite.glowMargin = std::min(reach, MAX_GLOW_MARGIN);
     }
     return style;
 }

@@ -45,6 +45,8 @@
 #include "widgets/buttons/LabelButton.hpp"
 #include "widgets/dialogs/ReplyThreadPopup.hpp"
 #include "widgets/dialogs/SettingsDialog.hpp"
+#include "providers/dgg/DggChannel.hpp"
+#include "providers/dgg/DggChatServer.hpp"
 #include "widgets/dialogs/UserInfoPopup.hpp"
 #include "widgets/helper/ScrollbarHighlight.hpp"
 #include "widgets/helper/SearchPopup.hpp"
@@ -3288,7 +3290,17 @@ void ChannelView::showUserInfoPopup(const QString &userName,
 
     auto openingChannel = this->effectiveSourceChannel();
     ChannelPtr contextChannel;
-    if (openingChannel && platform == MessagePlatform::Kick)
+    if (platform == MessagePlatform::Dgg)
+    {
+        // destiny.gg: the same card as for Twitch and Kick, with the DGG
+        // chat as its channel
+        contextChannel = getApp()->getDggChatServer()->channel();
+        if (!contextChannel)
+        {
+            contextChannel = Channel::getEmpty();
+        }
+    }
+    else if (openingChannel && platform == MessagePlatform::Kick)
     {
         contextChannel =
             getApp()->getKickChatServer()->findBySlug(alternativePopoutChannel);

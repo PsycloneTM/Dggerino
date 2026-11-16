@@ -17,6 +17,9 @@
 #include "controllers/userdata/UserDataController.hpp"
 #include "messages/Message.hpp"
 #include "messages/MessageBuilder.hpp"
+#include "providers/dgg/DggChannel.hpp"
+#include "providers/dgg/DggChatServer.hpp"
+#include "providers/dgg/DggMessage.hpp"
 #include "providers/IvrApi.hpp"
 #include "providers/kick/KickAccount.hpp"
 #include "providers/kick/KickApi.hpp"
@@ -62,6 +65,10 @@
 #include <QNetworkReply>
 #include <QPointer>
 #include <QStringBuilder>
+#include <QTimer>
+
+#include <algorithm>
+#include <cmath>
 
 namespace {
 constexpr QStringView TEXT_FOLLOWERS = u"Followers: %1";
@@ -175,6 +182,52 @@ QString hashUrl(const QString &url)
 }  // namespace
 
 namespace chatterino {
+
+namespace {
+
+/// A label whose text wraps and whose height follows: Label draws wrapped
+/// text, but always asks for a single line of height, so a long text is cut
+/// off. The width is left to the layout (so the card keeps its size), the
+/// height grows to fit every line.
+class WrappingLabel : public Label
+{
+public:
+    explicit WrappingLabel(QString text = QString())
+        : Label(std::move(text))
+    {
+        this->setWordWrap(true);
+    }
+
+    bool hasHeightForWidth() const override
+    {
+        return true;
+    }
+
+    int heightForWidth(int width) const override
+    {
+        const auto textWidth = std::max<qreal>(
+            1.0,
+            width - this->currentPadding_.left() - this->currentPadding_.right());
+        const auto bounds = this->getFontMetrics().boundingRect(
+            QRectF(0, 0, textWidth, 100000),
+            Qt::TextWordWrap | Qt::TextWrapAnywhere, this->text_);
+        return static_cast<int>(
+            std::ceil(bounds.height() + this->currentPadding_.top() +
+                      this->currentPadding_.bottom()));
+    }
+
+protected:
+    void updateSize() override
+    {
+        Label::updateSize();
+        // don't ask for the width of the whole text on one line
+        this->sizeHint_.setWidth(0);
+        this->minimumSizeHint_.setWidth(0);
+        this->updateGeometry();
+    }
+};
+
+}  // namespace
 
 using namespace literals;
 
@@ -312,6 +365,11 @@ UserInfoPopup::UserInfoPopup(bool closeAutomatically, Split *split)
                 if (this->isKick_)
                 {
                     this->onKickProfilePictureClick(button);
+                    return;
+                }
+                if (this->isDgg_)
+                {
+                    this->onDggProfilePictureClick(button);
                     return;
                 }
 
@@ -470,12 +528,20 @@ UserInfoPopup::UserInfoPopup(bool closeAutomatically, Split *split)
                 vbox.emplace<Label>(TEXT_PRONOUNS.arg(TEXT_LOADING))
                     .assign(&this->ui_.pronounsLabel);
             }
+            // destiny.gg: what the user watches comes first
+            vbox.emplace<MarkdownLabel>(this, QString())
+                .assign(&this->ui_.watchingLabel);
+            this->ui_.watchingLabel->hide();
             vbox.emplace<Label>(TEXT_FOLLOWERS.arg(""))
                 .assign(&this->ui_.followerCountLabel);
             vbox.emplace<Label>(TEXT_CREATED.arg(""))
                 .assign(&this->ui_.createdDateLabel);
             vbox.emplace<Label>("").assign(&this->ui_.followageLabel);
             vbox.emplace<Label>("").assign(&this->ui_.subageLabel);
+            // the bio wraps and the card grows to show all of it
+            this->ui_.bioLabel = new WrappingLabel;
+            vbox->addWidget(this->ui_.bioLabel);
+            this->ui_.bioLabel->hide();
         }
     }
 
@@ -493,9 +559,15 @@ UserInfoPopup::UserInfoPopup(bool closeAutomatically, Split *split)
 
         user.emplace<LabelButton>("Add notes", this)
             .assign(&this->ui_.notesAdd);
-        auto whisper = user.emplace<LabelButton>("Whisper", this);
+        auto whisper = user.emplace<LabelButton>("Whisper", this)
+                           .assign(&this->ui_.whisper);
         auto usercard = user.emplace<LabelButton>("Usercard", this)
                             .assign(&this->ui_.usercardLabel);
+        auto logs =
+            user.emplace<LabelButton>("Logs", this).assign(&this->ui_.logs);
+        logs->setToolTip(
+            QStringLiteral("Open the user's logs on RustleSearch"));
+        logs->hide();
         auto mod = user.emplace<PixmapButton>(this);
         mod->setPixmap(getResources().buttons.mod);
         mod->setScaleIndependentSize(30, 30);
@@ -527,6 +599,13 @@ UserInfoPopup::UserInfoPopup(bool closeAutomatically, Split *split)
             QDesktopServices::openUrl("https://www.twitch.tv/popout/" +
                                       this->underlyingChannel_->getName() +
                                       "/viewercard/" + this->userName_);
+        });
+
+        QObject::connect(logs.getElement(), &Button::leftClicked, this, [this] {
+            if (this->isDgg_ && !this->userName_.isEmpty())
+            {
+                QDesktopServices::openUrl(dggLogsUrl(this->userName_));
+            }
         });
 
         QObject::connect(mod.getElement(), &Button::leftClicked, [this] {
@@ -749,7 +828,7 @@ void UserInfoPopup::installEvents()
     QObject::connect(
         this->ui_.block, &QCheckBox::stateChanged,
         [this](int newState) mutable {
-            if (this->isKick_)
+            if (this->isKick_ || this->isDgg_)
             {
                 return;
             }
@@ -943,6 +1022,8 @@ void UserInfoPopup::setData(const QString &name,
     this->setWindowTitle(
         TEXT_TITLE.arg(name, this->underlyingChannel_->getName()));
     this->isKick_ = this->underlyingChannel_->getType() == Channel::Type::Kick;
+    this->isDgg_ = this->underlyingChannel_->getType() == Channel::Type::Dgg;
+    this->ui_.logs->setVisible(this->isDgg_);
     if (this->isKick_)
     {
         this->ui_.timeoutWidget->setMinTimeout(60);
@@ -954,6 +1035,18 @@ void UserInfoPopup::setData(const QString &name,
     if (this->isKick_)
     {
         this->updateKickUserData();
+        if (this->ui_.pronounsLabel)
+        {
+            this->ui_.pronounsLabel->hide();
+        }
+    }
+    else if (this->isDgg_)
+    {
+        // Without messages the card shrank to its header, much narrower than
+        // with them. Keep the width the chat area gives it.
+        this->ui_.noMessagesLabel->setMinimumWidth(
+            this->ui_.latestMessages->minimumWidth());
+        this->updateDggUserData();
         if (this->ui_.pronounsLabel)
         {
             this->ui_.pronounsLabel->hide();
@@ -975,7 +1068,7 @@ void UserInfoPopup::setData(const QString &name,
     auto type = this->channel_->getType();
     if (type == Channel::Type::TwitchLive ||
         type == Channel::Type::TwitchWhispers || type == Channel::Type::Misc ||
-        type == Channel::Type::Kick)
+        type == Channel::Type::Kick || type == Channel::Type::Dgg)
     {
         // not a normal twitch channel, the url opened by the button will be invalid, so hide the button
         this->ui_.usercardLabel->hide();
@@ -1354,7 +1447,7 @@ void UserInfoPopup::loadAvatar(const QString &userID, const QString &pictureURL,
     this->helixAvatarUrl_ = pictureURL;
     this->updateAvatarUrl();
 
-    if (getSettings()->displaySevenTVAnimatedProfile)
+    if (getSettings()->displaySevenTVAnimatedProfile && !this->isDgg_)
     {
         this->loadSevenTVAvatar(userID, isKick);
     }
@@ -1788,11 +1881,252 @@ void UserInfoPopup::onKickProfilePictureClick(Qt::MouseButton button)
     }
 }
 
+void UserInfoPopup::updateDggUserData()
+{
+    assert(this->isDgg_);
+
+    // not Twitch: no followers, nothing to block or whisper
+    this->ui_.followerCountLabel->hide();
+    this->ui_.block->hide();
+    this->ui_.whisper->hide();
+    this->ui_.notesAdd->setEnabled(false);
+    this->ui_.createdDateLabel->setText(TEXT_CREATED.arg(TEXT_LOADING));
+    this->ui_.userIDLabel->setText(TEXT_USER_ID % TEXT_LOADING);
+
+    auto *dggChannel =
+        dynamic_cast<DggChannel *>(this->underlyingChannel_.get());
+    if (dggChannel != nullptr)
+    {
+        // what chat already knows, while the site is asked
+        if (const auto known = dggChannel->findUser(this->userName_))
+        {
+            this->showDggUser(*known, {});
+        }
+    }
+
+    QPointer<UserInfoPopup> self(this);
+    const QString requested = this->userName_;
+    dggFetchUserInfo(
+        requested, [self, requested](const std::optional<DggProfile> &profile,
+                                     int status) {
+            if (!self || self->userName_.compare(requested,
+                                                 Qt::CaseInsensitive) != 0)
+            {
+                return;  // closed, or the card moved on to someone else
+            }
+            if (!profile)
+            {
+                // an account that does not exist, or a site that wants a login
+                if (!self->ui_.createdDateLabel->getText().contains(u"-"))
+                {
+                    self->ui_.createdDateLabel->setText(
+                        TEXT_CREATED.arg(TEXT_UNAVAILABLE));
+                }
+                if (self->userId_.isEmpty())
+                {
+                    self->ui_.userIDLabel->setText(u"ID " % TEXT_UNAVAILABLE);
+                    self->ui_.userIDLabel->setProperty(
+                        "copy-text", TEXT_UNAVAILABLE.toString());
+                }
+                if (status == 401 || status == 403)
+                {
+                    self->ui_.bioLabel->setText(
+                        u"destiny.gg wants a login for profile details "
+                        u"(see CHATTERINO_DGG_COOKIE)."_s);
+                    self->ui_.bioLabel->show();
+                }
+                return;
+            }
+            // the site's user info has no subscription, so the tier (and
+            // Patreon) stay what chat told us
+            auto merged = profile->user;
+            if (auto *channel = dynamic_cast<DggChannel *>(
+                    self->underlyingChannel_.get()))
+            {
+                if (const auto known = channel->findUser(requested))
+                {
+                    if (merged.subTier == 0)
+                    {
+                        merged.subTier = known->subTier;
+                    }
+                    merged.patreonMember |= known->patreonMember;
+                }
+            }
+            self->showDggUser(merged, *profile);
+        });
+
+    // "Ignore highlights" is a local setting, so it works as on Twitch
+    bool isIgnoringHighlights = false;
+    for (const auto &blockedUser : getSettings()->blacklistedUsers.raw())
+    {
+        if (this->userName_ == blockedUser.getPattern())
+        {
+            isIgnoringHighlights = true;
+            break;
+        }
+    }
+    this->ui_.ignoreHighlights->setChecked(isIgnoringHighlights);
+    this->ui_.ignoreHighlights->setEnabled(true);
+}
+
+void UserInfoPopup::showDggUser(const DggUser &user, const DggProfile &profile)
+{
+    if (user.id > 0)
+    {
+        this->userId_ = u"dgg:" % QString::number(user.id);
+        this->updateNotes();
+        this->ui_.notesAdd->setEnabled(true);
+        this->ui_.userIDLabel->setText(TEXT_USER_ID %
+                                       QString::number(user.id));
+        this->ui_.userIDLabel->setProperty("copy-text",
+                                           QString::number(user.id));
+    }
+
+    if (!user.nick.isEmpty())
+    {
+        this->userName_ = user.nick;
+        this->ui_.nameLabel->setText(user.nick);
+        this->ui_.nameLabel->setProperty("copy-text", user.nick);
+    }
+
+    // what they watch first, as a link to that stream's bigscreen page
+    if (!user.watchingPlatform.isEmpty())
+    {
+        this->ui_.watchingLabel->setText(
+            u"Watching: [%1 on %2](%3)"_s.arg(
+                user.watchingId, user.watchingPlatform,
+                dggBigscreenUrl(user.watchingPlatform, user.watchingId)
+                    .toString(QUrl::FullyEncoded)));
+        this->ui_.watchingLabel->show();
+    }
+
+    if (user.createdDate.isValid())
+    {
+        const auto created = user.createdDate.toLocalTime();
+        this->ui_.createdDateLabel->setText(
+            TEXT_CREATED.arg(created.date().toString(Qt::ISODate)));
+        this->ui_.createdDateLabel->setToolTip(
+            formatLongFriendlyDuration(created,
+                                       QDateTime::currentDateTimeUtc()) +
+            u" ago"_s);
+        this->ui_.createdDateLabel->setMouseTracking(true);
+    }
+
+    // the site's user info has `subscriber` among the features but no tier
+    if (user.subTier > 0)
+    {
+        this->ui_.followageLabel->setText(
+            u"Subscriber, tier %1"_s.arg(user.subTier));
+    }
+    else if (user.features.contains(u"subscriber"))
+    {
+        this->ui_.followageLabel->setText(u"Subscriber"_s);
+    }
+
+    QStringList about;
+    if (!profile.age.isEmpty())
+    {
+        about << u"Age: "_s + profile.age;
+    }
+    if (!profile.gender.isEmpty())
+    {
+        about << u"Gender: "_s + profile.gender;
+    }
+    if (!about.isEmpty())
+    {
+        this->ui_.subageLabel->setText(about.join(u"  ·  "_s));
+    }
+
+    if (!profile.bio.isEmpty())
+    {
+        this->ui_.bioLabel->setText(u"Bio: "_s + profile.bio);
+        this->ui_.bioLabel->show();
+
+        // The card is already open: let it grow (never shrink) to the
+        // height the wrapped bio needs, once the layout has caught up.
+        QTimer::singleShot(0, this, [this] {
+            if (auto *l = this->layout())
+            {
+                const int needed = l->totalHeightForWidth(this->width());
+                if (needed > this->height())
+                {
+                    this->resize(this->width(), needed);
+                }
+            }
+        });
+    }
+
+    // the picture: its file is known once the site's page was read
+    if (!user.photo.isEmpty())
+    {
+        QPointer<UserInfoPopup> self(this);
+        const QString photo = user.photo;
+        dggLoadSiteImages([self, photo] {
+            if (!self)
+            {
+                return;
+            }
+            const auto url = dggPhotoUrl(photo);
+            if (url.isEmpty() || url.toString() == self->helixAvatarUrl_)
+            {
+                return;
+            }
+            self->helixAvatarUrl_ = url.toString();
+            self->updateAvatarUrl();
+            self->loadCurrentAvatar();
+        });
+    }
+}
+
+void UserInfoPopup::onDggProfilePictureClick(Qt::MouseButton button)
+{
+    assert(this->isDgg_);
+
+    const auto profileUrl = dggProfileUrl(this->userName_);
+    switch (button)
+    {
+        case Qt::LeftButton:
+            QDesktopServices::openUrl(profileUrl);
+            break;
+
+        case Qt::RightButton: {
+            auto *menu = new QMenu(this);
+            menu->setAttribute(Qt::WA_DeleteOnClose);
+
+            menu->addAction("Open profile in browser", [profileUrl] {
+                QDesktopServices::openUrl(profileUrl);
+            });
+            menu->addAction("Open logs in browser", [name = this->userName_] {
+                QDesktopServices::openUrl(dggLogsUrl(name));
+            });
+            if (!this->avatarUrl_.isEmpty())
+            {
+                menu->addAction("Open avatar in browser",
+                                [url = this->avatarUrl_] {
+                                    QDesktopServices::openUrl(QUrl(url));
+                                });
+                menu->addAction("Copy avatar link", [url = this->avatarUrl_] {
+                    crossPlatformCopy(url);
+                });
+            }
+            menu->popup(QCursor::pos());
+            menu->raise();
+        }
+        break;
+
+        default:;
+    }
+}
+
 QStringView UserInfoPopup::platformName() const
 {
     if (this->isKick_)
     {
         return u"Kick";
+    }
+    if (this->isDgg_)
+    {
+        return u"destiny.gg";
     }
     return u"Twitch";
 }
@@ -1921,6 +2255,10 @@ void UserInfoPopup::loadCurrentAvatar()
         if (uid.startsWith(u"kick:"))
         {
             uid.slice(5);
+        }
+        else if (uid.startsWith(u"dgg:"))
+        {
+            uid.slice(4);
         }
         this->loadAvatar(uid, this->helixAvatarUrl_, this->isKick_);
     }

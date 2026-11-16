@@ -858,6 +858,38 @@ std::optional<FilterList> parseFilterList(string_view text)
         const auto arg = trim(part.substr(open + 1, part.size() - open - 2));
 
         FilterFn fn;
+        if (name == "drop-shadow")
+        {
+            fn.kind = FilterKind::DropShadow;
+            std::vector<double> lengths;
+            bool haveColor = false;
+            for (const auto token : splitSpace(arg))
+            {
+                if (const auto length = parseLength(token);
+                    length && !length->percent)
+                {
+                    lengths.push_back(length->value);
+                }
+                else if (const auto color = parseColor(token); color && !haveColor)
+                {
+                    fn.rgba = *color;
+                    haveColor = true;
+                }
+                else
+                {
+                    return std::nullopt;
+                }
+            }
+            if (lengths.size() < 2 || lengths.size() > 3)
+            {
+                return std::nullopt;
+            }
+            fn.x = lengths[0];
+            fn.y = lengths[1];
+            fn.blur = lengths.size() > 2 ? std::max(0.0, lengths[2]) : 0.0;
+            out.push_back(fn);
+            continue;
+        }
         if (name == "hue-rotate")
         {
             fn.kind = FilterKind::HueRotate;
@@ -1286,9 +1318,32 @@ double filterIdentity(FilterKind kind)
         case FilterKind::Grayscale:
         case FilterKind::Sepia:
         case FilterKind::Invert:
+        case FilterKind::DropShadow:
             return 0;
     }
     return 0;
+}
+
+/// Two drop-shadows halfway. A missing one is `0 0 0 transparent`, so the
+/// glow fades in and out (the colour of the one that is there stays).
+FilterFn lerpShadow(const FilterFn &from, const FilterFn &to, double t)
+{
+    FilterFn out;
+    out.kind = FilterKind::DropShadow;
+    out.x = lerp(from.x, to.x, t);
+    out.y = lerp(from.y, to.y, t);
+    out.blur = lerp(from.blur, to.blur, t);
+    // premultiplied, as the spec does
+    const double a0 = from.rgba[3];
+    const double a1 = to.rgba[3];
+    const double a = lerp(a0, a1, t);
+    for (size_t c = 0; c < 3; c++)
+    {
+        const double p = lerp(from.rgba[c] * a0, to.rgba[c] * a1, t);
+        out.rgba[c] = a > 1e-6 ? p / a : to.rgba[c];
+    }
+    out.rgba[3] = a;
+    return out;
 }
 
 FilterList lerpFilters(const FilterList &from, const FilterList &to, double t)
@@ -1306,6 +1361,25 @@ FilterList lerpFilters(const FilterList &from, const FilterList &to, double t)
     for (size_t i = 0; i < count; i++)
     {
         const FilterKind kind = i < from.size() ? from[i].kind : to[i].kind;
+        if (kind == FilterKind::DropShadow)
+        {
+            FilterFn none;
+            none.kind = FilterKind::DropShadow;
+            none.rgba = {0, 0, 0, 0};
+            FilterFn a = i < from.size() ? from[i] : none;
+            FilterFn b = i < to.size() ? to[i] : none;
+            // a missing side takes the colour of the other one
+            if (i >= from.size())
+            {
+                a.rgba = {b.rgba[0], b.rgba[1], b.rgba[2], 0};
+            }
+            if (i >= to.size())
+            {
+                b.rgba = {a.rgba[0], a.rgba[1], a.rgba[2], 0};
+            }
+            out.push_back(lerpShadow(a, b, t));
+            continue;
+        }
         const double a =
             i < from.size() ? from[i].amount : filterIdentity(kind);
         const double b = i < to.size() ? to[i].amount : filterIdentity(kind);

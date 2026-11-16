@@ -20,6 +20,7 @@ class ChannelView;
 class Notebook;
 class TwitchChannel;
 class KickChannel;
+class DggChannel;
 
 class EmotePopup : public BasePopup
 {
@@ -52,6 +53,7 @@ private:
     ChannelPtr channel_;
     TwitchChannel *twitchChannel_{};
     KickChannel *kickChannel_{};
+    DggChannel *dggChannel_{};
 
     QLineEdit *search_;
     Notebook *notebook_;

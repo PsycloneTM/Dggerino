@@ -503,6 +503,27 @@ void DggAssets::rebuildBadges()
     this->badgeOrder_ = std::move(orders);
 }
 
+std::vector<DggAssets::MenuEmote> DggAssets::menuEmotes() const
+{
+    std::vector<MenuEmote> out;
+    out.reserve(this->emotes_.size());
+    for (const auto &[_name, entry] : this->emotes_)
+    {
+        if (entry.emote)
+        {
+            out.push_back({entry.emote, entry.def.minimumSubTier,
+                           entry.def.patreonOnly});
+        }
+    }
+    return out;
+}
+
+EmotePtr DggAssets::menuEmote(QStringView name) const
+{
+    const auto it = this->emotes_.find(name);
+    return it == this->emotes_.end() ? nullptr : it->second.emote;
+}
+
 bool DggAssets::isEmoteFor(QStringView word, const DggUser &user) const
 {
     const auto it = this->emotes_.find(word);
@@ -529,6 +550,26 @@ EmotePtr DggAssets::emoteFor(QStringView word, const DggUser &user,
     {
         return nullptr;
     }
+    return this->emoteInContext(entry, context);
+}
+
+EmotePtr DggAssets::comboEmoteFor(QStringView name, int comboCount) const
+{
+    const auto it = this->emotes_.find(name);
+    if (it == this->emotes_.end())
+    {
+        return nullptr;
+    }
+
+    DggEmoteContext context;
+    context.comboMessage = true;
+    context.comboCount = comboCount;
+    return this->emoteInContext(it->second, context);
+}
+
+EmotePtr DggAssets::emoteInContext(const EmoteEntry &entry,
+                                   const DggEmoteContext &context) const
+{
     if (!entry.contextual)
     {
         if (entry.style.valid && entry.style.sprite.playsOnce())
@@ -580,9 +621,23 @@ DggEmoteContext DggAssets::emoteContextFor(const DggUser &user, bool isAction,
 
 std::vector<EmotePtr> DggAssets::badgesFor(const DggUser &user) const
 {
+    // The subscription badges are not shown: the generic `subscriber` one and
+    // the tier ones (Tier 1 `flair13`, Tier 2 `flair1`, Tier 3 `flair3`,
+    // Tier 4 `flair8`, Tier 5 `flair42`). The nick colour (and the Tier 5
+    // rainbow) comes from the flairs, not from this list, and is unchanged.
+    static const std::set<QString> hiddenBadges{
+        QStringLiteral("subscriber"), QStringLiteral("flair13"),
+        QStringLiteral("flair1"),     QStringLiteral("flair3"),
+        QStringLiteral("flair8"),     QStringLiteral("flair42"),
+    };
+
     std::vector<std::pair<int, EmotePtr>> found;
     for (const auto &feature : user.features)
     {
+        if (hiddenBadges.count(feature) != 0)
+        {
+            continue;
+        }
         auto it = this->badges_.find(feature);
         if (it == this->badges_.end())
         {
@@ -639,6 +694,18 @@ DggAssets::NickStyle DggAssets::nickStyleFor(const DggUser &user) const
         }
     }
     return style;
+}
+
+std::optional<QString> DggAssets::flairNameForLabel(QStringView label) const
+{
+    for (const auto &def : this->flairs_)
+    {
+        if (def.label.compare(label, Qt::CaseInsensitive) == 0)
+        {
+            return def.name;
+        }
+    }
+    return std::nullopt;
 }
 
 }  // namespace chatterino

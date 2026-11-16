@@ -246,6 +246,20 @@ set(SOURCE_FILES
         controllers/highlights/types/SubscribedThreadHighlight.hpp
         controllers/highlights/types/SubscriptionsHighlight.cpp
         controllers/highlights/types/SubscriptionsHighlight.hpp
+        controllers/highlights/types/DggSubscriptionHighlight.cpp
+        controllers/highlights/types/DggSubscriptionHighlight.hpp
+        controllers/highlights/types/DggGiftHighlight.cpp
+        controllers/highlights/types/DggGiftHighlight.hpp
+        controllers/highlights/types/DggDonationHighlight.cpp
+        controllers/highlights/types/DggDonationHighlight.hpp
+        controllers/highlights/types/DggSpotlightHighlight.cpp
+        controllers/highlights/types/DggSpotlightHighlight.hpp
+        controllers/highlights/types/DggBroadcastHighlight.cpp
+        controllers/highlights/types/DggBroadcastHighlight.hpp
+        controllers/highlights/types/DggXPostHighlight.cpp
+        controllers/highlights/types/DggXPostHighlight.hpp
+        controllers/highlights/types/DggVestaboardHighlight.cpp
+        controllers/highlights/types/DggVestaboardHighlight.hpp
         controllers/highlights/types/UncategorizedNotificationHighlight.cpp
         controllers/highlights/types/UncategorizedNotificationHighlight.hpp
         controllers/highlights/types/UserHighlight.cpp
@@ -457,6 +471,8 @@ set(SOURCE_FILES
         providers/dgg/DggChannel.hpp
         providers/dgg/DggChatServer.cpp
         providers/dgg/DggChatServer.hpp
+        providers/dgg/DggCombo.cpp
+        providers/dgg/DggCombo.hpp
         providers/dgg/DggCssAnimation.cpp
         providers/dgg/DggCssAnimation.hpp
         providers/dgg/DggEmoteCss.cpp
@@ -770,6 +786,8 @@ set(SOURCE_FILES
         widgets/BaseWindow.hpp
         widgets/ChatterListWidget.cpp
         widgets/ChatterListWidget.hpp
+        widgets/DggViewerListWidget.cpp
+        widgets/DggViewerListWidget.hpp
         widgets/FollowedChannelsWindow.cpp
         widgets/FollowedChannelsWindow.hpp
         widgets/DraggablePopup.cpp
@@ -991,6 +1009,10 @@ set(SOURCE_FILES
 
         widgets/splits/ClosedSplits.cpp
         widgets/splits/ClosedSplits.hpp
+        widgets/splits/DggPinnedBanner.cpp
+        widgets/splits/DggPinnedBanner.hpp
+        widgets/splits/DggPollBanner.cpp
+        widgets/splits/DggPollBanner.hpp
         widgets/splits/DraggedSplit.cpp
         widgets/splits/DraggedSplit.hpp
         widgets/splits/InputCompletionItem.cpp

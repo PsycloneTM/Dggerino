@@ -61,14 +61,16 @@ struct DggWebSocket::Listener final : public WebSocketListener {
         }
         else if (frame->name == "NAMES"_L1)
         {
-            // ~1500 user objects. Only the counts are used for now, so don't
-            // copy the list over to the GUI thread.
+            // ~1500 user objects. They are forwarded with the counts: the
+            // channel remembers their nicks (for clickable names and the
+            // user card). Implicitly shared, so the hand-over is cheap.
             const auto obj = frame->payload.toObject();
-            QJsonObject slim;
-            slim.insert("connectioncount"_L1, obj.value("connectioncount"_L1));
-            slim.insert("usercount"_L1,
-                        static_cast<int>(obj.value("users"_L1).toArray().size()));
-            frame->payload = slim;
+            const auto users = obj.value("users"_L1).toArray();
+            QJsonObject out;
+            out.insert("connectioncount"_L1, obj.value("connectioncount"_L1));
+            out.insert("usercount"_L1, static_cast<int>(users.size()));
+            out.insert("users"_L1, users);
+            frame->payload = out;
             frames.push_back(std::move(*frame));
         }
         else

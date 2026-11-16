@@ -48,6 +48,7 @@ private:
 
     std::unique_ptr<UserStrategy> strategy_;
     ActionCallback callback_;
+    bool isDgg_{};
     bool prependAt_;
 
     std::vector<UserItem> items_{};

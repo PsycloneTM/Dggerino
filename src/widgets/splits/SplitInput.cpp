@@ -1127,7 +1127,8 @@ void SplitInput::updateCompletionPopup()
     auto *tc = dynamic_cast<TwitchChannel *>(channel);
     bool showEmoteCompletion = getSettings()->emoteCompletionWithColon;
     bool showUsernameCompletion =
-        tc != nullptr && getSettings()->showUsernameCompletionMenu;
+        (tc != nullptr || channel->isDggChannel()) &&
+        getSettings()->showUsernameCompletionMenu;
     if (!showEmoteCompletion && !showUsernameCompletion)
     {
         this->hideCompletionPopup();
@@ -1251,10 +1252,18 @@ void SplitInput::insertCompletionText(const QString &input_) const
         }
         else if (text[i] == '@')
         {
-            const auto userMention =
-                formatUserMention(input_, edit.isFirstWord(),
-                                  getSettings()->mentionUsersWithComma);
-            input = "@" + userMention + " ";
+            if (this->split_->getSelectedChannel()->isDggChannel())
+            {
+                // destiny.gg has no `@`: the name replaces it
+                input = input_ + " ";
+            }
+            else
+            {
+                const auto userMention =
+                    formatUserMention(input_, edit.isFirstWord(),
+                                      getSettings()->mentionUsersWithComma);
+                input = "@" + userMention + " ";
+            }
             done = true;
         }
 

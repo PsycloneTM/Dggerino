@@ -7,6 +7,7 @@
 #include "Application.hpp"
 #include "controllers/accounts/AccountController.hpp"
 #include "controllers/completion/sources/Helpers.hpp"
+#include "providers/dgg/DggChannel.hpp"
 #include "providers/twitch/TwitchAccount.hpp"
 #include "providers/twitch/TwitchChannel.hpp"
 #include "singletons/Settings.hpp"
@@ -48,12 +49,13 @@ void UserSource::addToListModel(GenericListModel &model, size_t maxCount) const
 void UserSource::addToStringList(QStringList &list, size_t maxCount,
                                  bool isFirstWord) const
 {
-    bool mentionComma = getSettings()->mentionUsersWithComma;
+    // destiny.gg has no "nick, message" style
+    bool mentionComma = getSettings()->mentionUsersWithComma && !this->isDgg_;
     addVecToStringList(this->output_, list, maxCount,
                        [this, isFirstWord, mentionComma](const UserItem &user) {
                            const auto userMention = formatUserMention(
                                user.second, isFirstWord, mentionComma);
-                           QString strTemplate = this->prependAt_
+                           QString strTemplate = this->prependAt_ && !this->isDgg_
                                                      ? QStringLiteral("@%1 ")
                                                      : QStringLiteral("%1 ");
                            return strTemplate.arg(userMention);
@@ -69,6 +71,20 @@ void UserSource::initializeFromChannel(const Channel *channel)
         for (const auto &user : currentUser->whisperUsers())
         {
             this->items_.emplace_back(user, user);
+        }
+        return;
+    }
+
+    if (const auto *dgg = dynamic_cast<const DggChannel *>(channel))
+    {
+        // everybody seen in chat so far (the viewer list included). The
+        // strategy matches the lower-case first part.
+        this->isDgg_ = true;
+        const auto nicks = dgg->nicks();
+        this->items_.reserve(nicks.size());
+        for (const auto &nick : nicks)
+        {
+            this->items_.emplace_back(nick.toLower(), nick);
         }
         return;
     }
