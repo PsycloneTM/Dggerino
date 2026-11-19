@@ -32,21 +32,68 @@ void AccountModel::getRowFromItem(const std::shared_ptr<Account> &item,
 
 int AccountModel::beforeInsert(const std::shared_ptr<Account> &item,
                                std::vector<QStandardItem *> &row,
-                               int proposedIndex)
+                               int /*proposedIndex*/)
 {
-    if (this->categoryCount_[item->getCategory()]++ == 0)
+    // The index SignalVectorModel proposes counts the category headers as if
+    // they were items of the vector. When the new account is the last of its
+    // category, it comes out one header too far, so the account (or its new
+    // header) ended up under the next category (a Kick account under "Dgg", a
+    // Dgg account under "Twitch"). So the place is worked out from the rows
+    // instead: categories are in order, and so are the accounts in each.
+    const auto &rows = this->rows();
+    const int count = static_cast<int>(rows.size());
+    const QString &category = item->getCategory();
+
+    int headerIndex = -1;  // the header of this category, if it has one
+    int nextHeader = count;  // the header of the next category, or the end
+    for (int i = 0; i < count; i++)
     {
-        auto newRow = this->createRow();
+        if (!rows[i].isCustomRow)
+        {
+            continue;
+        }
 
-        setStringItem(newRow[0], item->getCategory(), false, false);
-        newRow[0]->setData(QFont("Segoe UI Light", 16), Qt::FontRole);
-
-        this->insertCustomRow(std::move(newRow), proposedIndex);
-
-        return proposedIndex + 1;
+        const QString name = rows[i].items[0]->text();
+        if (name == category)
+        {
+            headerIndex = i;
+            continue;
+        }
+        if (headerIndex >= 0 || name > category)
+        {
+            nextHeader = i;
+            break;
+        }
     }
 
-    return proposedIndex;
+    if (headerIndex < 0)
+    {
+        // the first account of its category: the header goes before the
+        // header of the next category
+        this->categoryCount_[category] = 1;
+
+        auto newRow = this->createRow();
+
+        setStringItem(newRow[0], category, false, false);
+        newRow[0]->setData(QFont("Segoe UI Light", 16), Qt::FontRole);
+
+        this->insertCustomRow(std::move(newRow), nextHeader);
+
+        return nextHeader + 1;
+    }
+
+    this->categoryCount_[category]++;
+
+    // before the first account of the category that doesn't sort before it
+    for (int i = headerIndex + 1; i < nextHeader; i++)
+    {
+        const auto &original = rows[i].original;
+        if (original && !(*original)->operator<(*item))
+        {
+            return i;
+        }
+    }
+    return nextHeader;
 }
 
 void AccountModel::afterRemoved(const std::shared_ptr<Account> &item,
