@@ -12,6 +12,8 @@
 #include "controllers/commands/CommandController.hpp"
 #include "controllers/hotkeys/HotkeyController.hpp"
 #include "controllers/notifications/NotificationController.hpp"
+#include "providers/dgg/DggAccount.hpp"
+#include "providers/dgg/DggAccountManager.hpp"
 #include "providers/dgg/DggChannel.hpp"
 #include "providers/kick/KickAccount.hpp"
 #include "providers/kick/KickChannel.hpp"
@@ -135,6 +137,10 @@ Split::Split(QWidget *parent)
     });
     this->signalHolder_.managedConnect(
         getApp()->getAccounts()->kick.currentUserChanged, [this] {
+            this->updateInputPlaceholder();
+        });
+    this->signalHolder_.managedConnect(
+        getApp()->getAccounts()->dgg.currentUserChanged, [this] {
             this->updateInputPlaceholder();
         });
     this->updateInputPlaceholder();
@@ -765,6 +771,16 @@ void Split::updateInputPlaceholder()
             return QString(u"Send message as " % user->username() % u"...");
         }();
         this->input_->ui_.textEdit->setPlaceholderText(placeholderText);
+        return;
+    }
+
+    if (this->getChannel()->isDggChannel())
+    {
+        auto user = getApp()->getAccounts()->dgg.current();
+        this->input_->ui_.textEdit->setPlaceholderText(
+            user->isAnonymous()
+                ? QString(u"Log in to send messages...")
+                : QString(u"Send message as " % user->username() % u"..."));
         return;
     }
 

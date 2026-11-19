@@ -5,6 +5,7 @@
 #pragma once
 
 #include "widgets/BaseWidget.hpp"
+#include "widgets/dialogs/DggLoginPage.hpp"
 #include "widgets/dialogs/KickLoginPage.hpp"
 
 #include <QAction>
@@ -84,6 +85,8 @@ private:
         AdvancedLoginWidget advanced;
 
         KickLoginPage kick;
+
+        DggLoginPage dgg;
     } ui_;
 };
 

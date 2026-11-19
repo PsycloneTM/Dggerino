@@ -23,7 +23,8 @@ class LabelButton;
 /// seconds, like the poll frame of the site. The close button hides it for
 /// the rest of the poll.
 ///
-/// Votes can't be cast from here yet (DGG chat is read-only in Chatterino).
+/// Clicking an option votes for it (like chat-gui), while the poll runs and the
+/// user is logged in and hasn't voted yet.
 class DggPollBanner final : public BaseWidget
 {
     Q_OBJECT

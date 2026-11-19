@@ -1,6 +1,8 @@
 #include "widgets/splits/DggPollBanner.hpp"
 
+#include "Application.hpp"
 #include "providers/dgg/DggChannel.hpp"
+#include "providers/dgg/DggChatServer.hpp"
 #include "singletons/Theme.hpp"
 #include "widgets/buttons/LabelButton.hpp"
 
@@ -8,6 +10,7 @@
 #include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QResizeEvent>
@@ -88,6 +91,9 @@ public:
     /// (the rows wrap to it).
     std::function<void()> heightChanged;
 
+    /// Called with the 1-based number of the option that was clicked
+    std::function<void(int)> optionClicked;
+
     void setPoll(const DggPoll &poll, const QColor &text, const QColor &accent,
                  float scale)
     {
@@ -95,6 +101,9 @@ public:
         this->text_ = text;
         this->accent_ = accent;
         this->scale_ = scale;
+        // an option can be clicked to vote for it while the user still may
+        this->setCursor(poll.ended || !poll.canVote ? Qt::ArrowCursor
+                                                    : Qt::PointingHandCursor);
         this->relayout();
         this->update();
     }
@@ -112,6 +121,26 @@ public:
     }
 
 protected:
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        if (event->button() != Qt::LeftButton || !this->optionClicked)
+        {
+            QWidget::mousePressEvent(event);
+            return;
+        }
+
+        const int y = static_cast<int>(event->position().y());
+        for (size_t i = 0; i < this->rows_.size(); i++)
+        {
+            const auto &row = this->rows_[i];
+            if (y >= row.top && y < row.top + row.height)
+            {
+                this->optionClicked(static_cast<int>(i) + 1);
+                return;
+            }
+        }
+    }
+
     void resizeEvent(QResizeEvent *event) override
     {
         QWidget::resizeEvent(event);
@@ -369,6 +398,13 @@ DggPollBanner::DggPollBanner(QWidget *parent)
     static_cast<PollOptionsView *>(this->optionsView_)->heightChanged =
         [this] {
             this->fitOptions();
+        };
+    static_cast<PollOptionsView *>(this->optionsView_)->optionClicked =
+        [this](int option) {
+            if (auto channel = this->channel_.lock())
+            {
+                getApp()->getDggChatServer()->castPollVote(*channel, option);
+            }
         };
 
     this->refreshTimer_->setSingleShot(true);

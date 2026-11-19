@@ -10,6 +10,7 @@
 #include "singletons/Theme.hpp"
 #include "widgets/AccountSwitchWidget.hpp"
 #include "widgets/dialogs/SettingsDialog.hpp"
+#include "widgets/helper/DggAccountSwitchWidget.hpp"
 #include "widgets/helper/KickAccountSwitchWidget.hpp"
 #include "widgets/helper/MicroNotebook.hpp"
 
@@ -41,9 +42,12 @@ AccountSwitchPopup::AccountSwitchPopup(QWidget *parent)
     this->ui_.accountSwitchWidget->setFocusPolicy(Qt::NoFocus);
     this->ui_.kickAccountSwitcher = new KickAccountSwitchWidget(this);
     this->ui_.kickAccountSwitcher->setFocusPolicy(Qt::NoFocus);
+    this->ui_.dggAccountSwitcher = new DggAccountSwitchWidget(this);
+    this->ui_.dggAccountSwitcher->setFocusPolicy(Qt::NoFocus);
 
     auto updateNotebook = [this, notebook] {
-        if (getApp()->getAccounts()->kick.accounts.empty())
+        if (getApp()->getAccounts()->kick.accounts.empty() &&
+            getApp()->getAccounts()->dgg.accounts.empty())
         {
             notebook->setShowHeader(false);
             notebook->select(this->ui_.accountSwitchWidget);
@@ -56,9 +60,12 @@ AccountSwitchPopup::AccountSwitchPopup(QWidget *parent)
     updateNotebook();
     this->signalHolder_.addConnection(
         getApp()->getAccounts()->kick.userListUpdated.connect(updateNotebook));
+    this->signalHolder_.addConnection(
+        getApp()->getAccounts()->dgg.userListUpdated.connect(updateNotebook));
 
     notebook->addPage(this->ui_.accountSwitchWidget, "Twitch");
     notebook->addPage(this->ui_.kickAccountSwitcher, "Kick");
+    notebook->addPage(this->ui_.dggAccountSwitcher, "Dgg");
     QVBoxLayout *vbox = new QVBoxLayout(this);
     vbox->addWidget(notebook);
 
@@ -125,6 +132,7 @@ void AccountSwitchPopup::refresh()
 {
     this->ui_.accountSwitchWidget->refresh();
     this->ui_.kickAccountSwitcher->refresh();
+    this->ui_.dggAccountSwitcher->refresh();
 }
 
 void AccountSwitchPopup::paintEvent(QPaintEvent *)

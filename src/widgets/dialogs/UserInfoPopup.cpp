@@ -17,6 +17,8 @@
 #include "controllers/userdata/UserDataController.hpp"
 #include "messages/Message.hpp"
 #include "messages/MessageBuilder.hpp"
+#include "providers/dgg/DggAccount.hpp"
+#include "providers/dgg/DggAccountManager.hpp"
 #include "providers/dgg/DggChannel.hpp"
 #include "providers/dgg/DggChatServer.hpp"
 #include "providers/dgg/DggMessage.hpp"
@@ -585,11 +587,13 @@ UserInfoPopup::UserInfoPopup(bool closeAutomatically, Split *split)
 
         QObject::connect(
             whisper.getElement(), &Button::leftClicked, this, [this] {
-                if (this->userName_.isEmpty())
+                if (this->userName_.isEmpty() || this->split_ == nullptr)
                 {
                     return;
                 }
 
+                // On destiny.gg this also fills in `/w nick `: the DGG chat
+                // sends it as a whisper
                 this->split_->getInput().setWhisperTarget(this->userName_);
                 this->split_->window()->activateWindow();
                 this->split_->setFocus(Qt::MouseFocusReason);
@@ -828,8 +832,9 @@ void UserInfoPopup::installEvents()
     QObject::connect(
         this->ui_.block, &QCheckBox::stateChanged,
         [this](int newState) mutable {
-            if (this->isKick_ || this->isDgg_)
+            if (this->isDgg_ || this->isKick_)
             {
+                // no blocking on destiny.gg or Kick
                 return;
             }
 
@@ -1024,6 +1029,11 @@ void UserInfoPopup::setData(const QString &name,
     this->isKick_ = this->underlyingChannel_->getType() == Channel::Type::Kick;
     this->isDgg_ = this->underlyingChannel_->getType() == Channel::Type::Dgg;
     this->ui_.logs->setVisible(this->isDgg_);
+    if (!this->isDgg_)
+    {
+        // the DGG card hides it when you are not logged in
+        this->ui_.whisper->show();
+    }
     if (this->isKick_)
     {
         this->ui_.timeoutWidget->setMinTimeout(60);
@@ -1885,10 +1895,8 @@ void UserInfoPopup::updateDggUserData()
 {
     assert(this->isDgg_);
 
-    // not Twitch: no followers, nothing to block or whisper
+    // not Twitch: no followers
     this->ui_.followerCountLabel->hide();
-    this->ui_.block->hide();
-    this->ui_.whisper->hide();
     this->ui_.notesAdd->setEnabled(false);
     this->ui_.createdDateLabel->setText(TEXT_CREATED.arg(TEXT_LOADING));
     this->ui_.userIDLabel->setText(TEXT_USER_ID % TEXT_LOADING);
@@ -1903,6 +1911,17 @@ void UserInfoPopup::updateDggUserData()
             this->showDggUser(*known, {});
         }
     }
+
+    // Whispering needs a login and makes no sense for yourself. There is no
+    // ignore list for now, so the Block checkbox is not shown.
+    auto &accounts = getApp()->getAccounts()->dgg;
+    const bool loggedIn = accounts.isLoggedIn();
+    const bool isMyself =
+        loggedIn && QString::compare(accounts.current()->username(),
+                                     this->userName_,
+                                     Qt::CaseInsensitive) == 0;
+    this->ui_.whisper->setVisible(loggedIn && !isMyself);
+    this->ui_.block->setVisible(false);
 
     QPointer<UserInfoPopup> self(this);
     const QString requested = this->userName_;
@@ -1931,8 +1950,8 @@ void UserInfoPopup::updateDggUserData()
                 if (status == 401 || status == 403)
                 {
                     self->ui_.bioLabel->setText(
-                        u"destiny.gg wants a login for profile details "
-                        u"(see CHATTERINO_DGG_COOKIE)."_s);
+                        u"destiny.gg did not give out profile details "
+                        u"(it wants a login it did not accept)."_s);
                     self->ui_.bioLabel->show();
                 }
                 return;
