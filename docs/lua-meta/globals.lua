@@ -938,6 +938,11 @@ c2.MessageFlag = {
     Announcement = 0,
     UncategorizedNotification = 0,
     AsciiArt = 0,
+    DggSubscription = 0,
+    DggGift = 0,
+    DggDonation = 0,
+    DggSpotlight = 0,
+    DggBroadcast = 0,
 }
 
 -- End src/messages/MessageFlag.hpp
