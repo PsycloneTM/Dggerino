@@ -6,6 +6,7 @@
 
 #include "controllers/accounts/Account.hpp"
 #include "controllers/accounts/AccountModel.hpp"
+#include "providers/dgg/DggAccount.hpp"
 #include "providers/kick/KickAccount.hpp"
 #include "providers/twitch/TwitchAccount.hpp"
 #include "util/SharedPtrElementLess.hpp"
@@ -51,6 +52,23 @@ AccountController::AccountController()
             }
         });
 
+    std::ignore =
+        this->dgg.accounts.itemInserted.connect([this](const auto &args) {
+            this->accounts_.insert(args.item);
+        });
+
+    std::ignore =
+        this->dgg.accounts.itemRemoved.connect([this](const auto &args) {
+            if (args.caller != this)
+            {
+                this->accounts_.removeFirstMatching(
+                    [&](const auto &item) {
+                        return item == args.item;
+                    },
+                    this);
+            }
+        });
+
     std::ignore = this->accounts_.itemRemoved.connect([this](const auto &args) {
         switch (args.item->getProviderId())
         {
@@ -76,6 +94,17 @@ AccountController::AccountController()
                 }
             }
             break;
+            case ProviderId::Dgg: {
+                if (args.caller != this)
+                {
+                    this->dgg.accounts.removeFirstMatching(
+                        [&](const auto &item) {
+                            return item == args.item;
+                        },
+                        this);
+                }
+            }
+            break;
         }
     });
 }
@@ -84,6 +113,7 @@ void AccountController::load()
 {
     this->twitch.load();
     this->kick.load();
+    this->dgg.load();
 }
 
 AccountModel *AccountController::createModel(QObject *parent)

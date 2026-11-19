@@ -271,6 +271,22 @@ const std::unordered_map<QString, VariableReplacer> COMMAND_VARS{
     {"element.copytext", NO_OP_PLACEHOLDER},
 };
 
+/// The commands destiny.gg chat handles itself (see
+/// `DggChatServer::sendChatMessage`). The built-in versions of some of them
+/// (`/w`, `/ignore`, `/unignore`) are Twitch's, so in a DGG channel they must
+/// not run.
+bool isDggOwnCommand(const QString &name)
+{
+    static const QStringList names{
+        QStringLiteral("/w"),       QStringLiteral("/whisper"),
+        QStringLiteral("/msg"),     QStringLiteral("/message"),
+        QStringLiteral("/tell"),    QStringLiteral("/t"),
+        QStringLiteral("/notify"),  QStringLiteral("/ignore"),
+        QStringLiteral("/unignore"), QStringLiteral("/unignoreall"),
+    };
+    return names.contains(name, Qt::CaseInsensitive);
+}
+
 }  // namespace
 
 namespace chatterino {
@@ -575,6 +591,13 @@ QString CommandController::execCommand(const QString &textNoEmoji,
 
             commandName = words[0];
         }
+    }
+
+    if (!dryRun && channel != nullptr && channel->isDggChannel() &&
+        isDggOwnCommand(commandName))
+    {
+        // Sent as it is: DggChannel::sendMessage() runs the command
+        return text;
     }
 
     if (!dryRun)

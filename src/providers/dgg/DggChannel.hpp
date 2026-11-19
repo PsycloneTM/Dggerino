@@ -18,7 +18,8 @@ namespace chatterino {
 /// The single destiny.gg chat room.
 ///
 /// DGG only has one room, so unlike KickChannel there's no per-channel lookup
-/// or live status. The channel is read-only until sending is implemented.
+/// or live status. Sending needs a destiny.gg account (a login key); without
+/// one the channel can be read but not written to.
 class DggChannel : public Channel
 {
 public:
@@ -36,6 +37,10 @@ public:
 
     bool canSendMessage() const override;
     bool isWritable() const override;
+
+    /// Sends the message as the logged-in user, or tells the user in the chat
+    /// why it wasn't sent. The message is shown when the server echoes it.
+    void sendMessage(const QString &message) override;
 
     /// Remembers that an event with this key was shown.
     ///

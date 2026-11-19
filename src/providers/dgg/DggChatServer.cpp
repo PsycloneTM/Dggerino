@@ -1,9 +1,13 @@
 #include "providers/dgg/DggChatServer.hpp"
 
+#include "Application.hpp"
 #include "common/network/NetworkRequest.hpp"
 #include "common/network/NetworkResult.hpp"
 #include "common/QLogging.hpp"
+#include "controllers/accounts/AccountController.hpp"
 #include "debug/AssertInGuiThread.hpp"
+#include "providers/dgg/DggAccount.hpp"
+#include "providers/dgg/DggAccountManager.hpp"
 #include "providers/dgg/DggAssets.hpp"
 #include "providers/dgg/DggChannel.hpp"
 #include "providers/dgg/DggCombo.hpp"
@@ -11,31 +15,47 @@
 #include "providers/dgg/DggMessage.hpp"
 #include "providers/dgg/DggMessageBuilder.hpp"
 #include "providers/dgg/DggWebSocket.hpp"
+#include "singletons/Settings.hpp"
 
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
 #include <QRegularExpression>
 #include <QTimer>
 
 #include <algorithm>
 #include <array>
+#include <tuple>
 
 namespace chatterino {
 
 using namespace Qt::Literals;
 
-void dggFetchUserInfo(
-    const QString &nick,
+namespace {
+
+/// `withKey`: send the logged-in account's login key as the `authtoken`
+/// cookie, the way the chat socket takes it. The URL only holds the nick, so
+/// the key never reaches a log; the `Cookie` header isn't logged either.
+void fetchUserInfo(
+    const QString &nick, bool withKey,
     std::function<void(const std::optional<DggProfile> &, int status)> done)
 {
     auto request = NetworkRequest(dggUserInfoUrl(nick));
-    // Optional, chosen by the user: without it the request is anonymous.
-    const auto cookie = qEnvironmentVariable("CHATTERINO_DGG_COOKIE");
-    if (!cookie.isEmpty())
+    if (withKey)
     {
-        request = std::move(request).header("Cookie", cookie.toUtf8());
+        const auto account = getApp()->getAccounts()->dgg.current();
+        if (account && !account->loginKey().isEmpty())
+        {
+            request = std::move(request).header(
+                "Cookie", ("authtoken=" + account->loginKey()).toUtf8());
+        }
+        else
+        {
+            withKey = false;
+        }
     }
 
     std::move(request)
@@ -43,10 +63,29 @@ void dggFetchUserInfo(
             const auto profile = parseDggUserInfo(result.parseJson());
             done(profile, result.status().value_or(0));
         })
-        .onError([done](const NetworkResult &result) {
-            done(std::nullopt, result.status().value_or(0));
+        .onError([nick, withKey, done](const NetworkResult &result) {
+            const auto status = result.status().value_or(0);
+            if (withKey && (status == 401 || status == 403))
+            {
+                // Whether the site accepts the key on this endpoint was never
+                // tested (it refuses it on the whisper ones): ask again
+                // without it, the way a guest does.
+                fetchUserInfo(nick, false, done);
+                return;
+            }
+            done(std::nullopt, status);
         })
         .execute();
+}
+
+}  // namespace
+
+void dggFetchUserInfo(
+    const QString &nick,
+    std::function<void(const std::optional<DggProfile> &, int status)> done)
+{
+    fetchUserInfo(nick, getApp()->getAccounts()->dgg.isLoggedIn(),
+                  std::move(done));
 }
 
 namespace {
@@ -258,6 +297,15 @@ void DggChatServer::ensureConnected(const std::shared_ptr<DggChannel> &chan)
         };
     }
 
+    if (!this->accountSignalConnected_)
+    {
+        this->accountSignalConnected_ = true;
+        this->signalHolder_.managedConnect(
+            getApp()->getAccounts()->dgg.currentUserChanged, [this] {
+                this->onAccountChanged();
+            });
+    }
+
     if (!this->socket_->isStarted())
     {
         chan->addSystemMessage(u"Connecting to destiny.gg chat..."_s);
@@ -269,6 +317,9 @@ void DggChatServer::ensureConnected(const std::shared_ptr<DggChannel> &chan)
             this->siteImagesReady_ = true;
             this->flushPendingFrames();
         });
+        // The login key of the active account, or none for a guest
+        this->socket_->setAuthToken(
+            getApp()->getAccounts()->dgg.current()->loginKey());
         this->socket_->start();
     }
 }
@@ -288,7 +339,9 @@ void DggChatServer::onSocketOpened()
     // the old one first means a pin that was removed while the connection was
     // down doesn't stay on screen.
     chan->setPinnedMessage(std::nullopt);
-    chan->addSystemMessage(u"Connected to destiny.gg chat as Guest."_s);
+    this->authenticated_ = false;
+    // The line saying who we are comes with `ME`, which the server sends
+    // right after the handshake.
 }
 
 void DggChatServer::onSocketClosed(std::chrono::milliseconds retryIn)
@@ -299,6 +352,7 @@ void DggChatServer::onSocketClosed(std::chrono::milliseconds retryIn)
         return;
     }
 
+    this->authenticated_ = false;
     this->endCombo(*chan);
     // Like chat-gui: a poll is ended on disconnect, so it isn't shown
     // forever. A poll that is still running is sent again after reconnecting.
@@ -313,6 +367,259 @@ void DggChatServer::onSocketClosed(std::chrono::milliseconds retryIn)
     else
     {
         chan->addSystemMessage(u"Disconnected from destiny.gg chat."_s);
+    }
+}
+
+void DggChatServer::onMe(DggChannel &chan, const QJsonObject &payload)
+{
+    // A guest gets `ME` without a user. A logged-in user's `ME` is their user
+    // object: `nick` is the name as they spell it.
+    const auto nick = payload.value("nick"_L1).toString();
+    this->authenticated_ = !nick.isEmpty();
+
+    this->endCombo(chan);
+    if (this->authenticated_)
+    {
+        chan.addSystemMessage(
+            u"Connected to destiny.gg chat as %1."_s.arg(nick));
+        return;
+    }
+
+    if (!getApp()->getAccounts()->dgg.current()->isAnonymous())
+    {
+        // Said once per connection, and the connection isn't retried: a key
+        // that was refused stays refused.
+        chan.addSystemMessage(
+            u"destiny.gg did not accept the saved login key, so you are "
+            u"connected as Guest. Add a new key under Settings > Accounts > "
+            u"Add new account > Dgg."_s);
+        return;
+    }
+
+    chan.addSystemMessage(u"Connected to destiny.gg chat as Guest."_s);
+}
+
+void DggChatServer::onAccountChanged()
+{
+    assertInGuiThread();
+
+    auto chan = this->channel_.lock();
+    if (!chan || !this->socket_ || !this->socket_->isStarted())
+    {
+        // Nothing is connected: the next connection reads the account.
+        return;
+    }
+
+    const auto account = getApp()->getAccounts()->dgg.current();
+
+    // stop() doesn't report a close, so what a close would have cleaned up
+    // is done here
+    this->socket_->stop();
+    this->authenticated_ = false;
+    this->pendingFrames_.clear();
+    this->endCombo(*chan);
+    chan->endPoll(std::nullopt);
+
+    if (account->isAnonymous())
+    {
+        chan->addSystemMessage(u"Logged out. Reconnecting as Guest..."_s);
+    }
+    else
+    {
+        chan->addSystemMessage(
+            u"Reconnecting as %1..."_s.arg(account->username()));
+    }
+
+    this->socket_->setAuthToken(account->loginKey());
+    this->socket_->start();
+}
+
+void DggChatServer::sendChatMessage(DggChannel &chan, const QString &rawText)
+{
+    assertInGuiThread();
+
+    const auto text = rawText.trimmed();
+    if (text.isEmpty())
+    {
+        return;
+    }
+
+    const auto say = [&](const char *code) {
+        chan.addSystemMessage(
+            dggErrorText(QJsonObject{{"description"_L1, QLatin1String(code)}}));
+    };
+
+    if (!getApp()->getAccounts()->dgg.isLoggedIn())
+    {
+        say("needlogin");
+        return;
+    }
+
+    // While a poll runs, typing an option's number votes instead of chatting
+    // (chat-gui does the same)
+    static const QRegularExpression pollNumber(QStringLiteral(R"(^[0-9]+$)"));
+    if (const auto &poll = chan.poll();
+        poll && !poll->ended && pollNumber.match(text).hasMatch())
+    {
+        const auto number = text.toLongLong();
+        if (number >= 1 && number <= poll->options.size())
+        {
+            this->castPollVote(chan, static_cast<int>(number));
+            return;
+        }
+    }
+
+    // chat-gui's names for a whisper: /w, /whisper, /msg, /message, /tell,
+    // /t and /notify. Caught before the check below so that `/w someone text`
+    // can never be said in public chat.
+    static const QRegularExpression whisperCommand(
+        QStringLiteral(
+            R"(^/(?:w|whisper|msg|message|tell|t|notify)(?:\s+(\S+))?(?:\s+(.*))?$)"),
+        QRegularExpression::CaseInsensitiveOption |
+            QRegularExpression::DotMatchesEverythingOption);
+    if (const auto whisper = whisperCommand.match(text); whisper.hasMatch())
+    {
+        this->sendWhisper(chan, whisper.captured(1), whisper.captured(2));
+        return;
+    }
+
+    // Like chat-gui, a slash command is never sent as a message (`/me` is the
+    // only one the server sees).
+    static const QRegularExpression slashCommand(
+        QStringLiteral(R"(^/([a-z0-9]+))"),
+        QRegularExpression::CaseInsensitiveOption);
+    const auto command = slashCommand.match(text);
+    if (command.hasMatch() &&
+        command.captured(1).compare(u"me"_s, Qt::CaseInsensitive) != 0)
+    {
+        chan.addSystemMessage(
+            u"Chatterino can only send messages and /me here for now. "
+            u"\"/%1\" was not sent."_s.arg(command.captured(1)));
+        return;
+    }
+
+    // The server counts the same way chat-gui does; this only saves a round
+    // trip, the server still has the last word.
+    if (text.toUcs4().size() > 512)
+    {
+        say("msgtoolong");
+        return;
+    }
+
+    if (!this->socket_ ||
+        !this->socket_->send("MSG", QJsonObject{{"data"_L1, text}}))
+    {
+        say("notconnected");
+        return;
+    }
+}
+
+void DggChatServer::sendWhisper(DggChannel &chan, const QString &rawNick,
+                                const QString &rawText)
+{
+    assertInGuiThread();
+
+    const auto say = [&](const char *code) {
+        chan.addSystemMessage(
+            dggErrorText(QJsonObject{{"description"_L1, QLatin1String(code)}}));
+    };
+
+    const auto account = getApp()->getAccounts()->dgg.current();
+    if (!account || !getApp()->getAccounts()->dgg.isLoggedIn())
+    {
+        say("needlogin");
+        return;
+    }
+
+    // chat-gui's nickregex
+    static const QRegularExpression nickRegex(QStringLiteral(R"(^\w{3,20}$)"));
+    const auto nick = rawNick.trimmed();
+    if (!nickRegex.match(nick).hasMatch())
+    {
+        chan.addSystemMessage(u"Invalid nick - /msg nick message"_s);
+        return;
+    }
+    if (nick.compare(account->username(), Qt::CaseInsensitive) == 0)
+    {
+        chan.addSystemMessage(u"Cannot send a message to yourself"_s);
+        return;
+    }
+
+    const auto text = rawText.trimmed();
+    if (text.isEmpty())
+    {
+        say("msgempty");
+        return;
+    }
+    if (text.toUcs4().size() > 512)
+    {
+        say("msgtoolong");
+        return;
+    }
+
+    if (!this->socket_ || !this->socket_->send("PRIVMSG",
+                                               QJsonObject{
+                                                   {"nick"_L1, nick},
+                                                   {"data"_L1, text},
+                                               }))
+    {
+        say("notconnected");
+        return;
+    }
+
+    // Show it from the local text (see the header). If the server refuses it,
+    // its error line follows.
+    DggChatMessage line;
+    if (const auto me = chan.findUser(account->username()))
+    {
+        line.user = *me;
+    }
+    line.user.nick = account->username();
+    line.rawText = text;
+    line.text = text;
+    line.timestampMs = QDateTime::currentMSecsSinceEpoch();
+    line.hash = dggMessageHash(line.timestampMs, 0, u"pm-sent|"_s + text);
+    line.isWhisper = true;
+    line.whisperTarget = chan.canonicalNick(nick).value_or(nick);
+
+    this->endCombo(chan);
+    chan.addMessage(
+        DggMessageBuilder::makeChatMessage(&chan, line, false, *this->assets_),
+        MessageContext::Original);
+}
+
+void DggChatServer::castPollVote(DggChannel &chan, int option)
+{
+    assertInGuiThread();
+
+    const auto &poll = chan.poll();
+    if (!poll || poll->ended || option < 1 || option > poll->options.size())
+    {
+        return;
+    }
+
+    const auto say = [&](const char *code) {
+        chan.addSystemMessage(
+            dggErrorText(QJsonObject{{"description"_L1, QLatin1String(code)}}));
+    };
+
+    if (!getApp()->getAccounts()->dgg.isLoggedIn())
+    {
+        say("needlogin");
+        return;
+    }
+    if (!poll->canVote)
+    {
+        say("alreadyvoted");
+        return;
+    }
+
+    // the server wants the number as a string, like chat-gui sends it
+    if (!this->socket_ ||
+        !this->socket_->send(
+            "CASTVOTE", QJsonObject{{"vote"_L1, QString::number(option)}}))
+    {
+        say("notconnected");
     }
 }
 
@@ -362,8 +669,10 @@ void DggChatServer::handleFrame(const DggFrame &frame)
         // Anything else completes the combo that was running
         this->endCombo(*chan);
 
+        HighlightAlert alert;
         const MessagePtr line = DggMessageBuilder::makeChatMessage(
-            chan.get(), *msg, frame.backlog, *this->assets_);
+            chan.get(), *msg, frame.backlog, *this->assets_, &alert);
+        MessageBuilder::triggerHighlights(chan.get(), alert);
         chan->addMessage(line, MessageContext::Original);
 
         ComboState state;
@@ -691,6 +1000,29 @@ void DggChatServer::handleFrame(const DggFrame &frame)
             u"Serving %1 connections and %2 users."_s
                 .arg(obj.value("connectioncount"_L1).toInt())
                 .arg(obj.value("usercount"_L1).toInt()));
+    }
+    else if (name == "ME"_L1)
+    {
+        this->onMe(*chan, obj);
+    }
+    else if (name == "PRIVMSG"_L1)
+    {
+        // A whisper to the user. It is private: it only shows in this split
+        // and isn't logged (see DggMessageBuilder::makeChatMessage).
+        auto msg = parseDggWhisper(obj, nowMs);
+        if (!msg || !chan->markSeen(msg->hash))
+        {
+            return;
+        }
+        chan->noteUser(msg->user);
+        this->endCombo(*chan);
+        chan->addMessage(DggMessageBuilder::makeChatMessage(
+                             chan.get(), *msg, frame.backlog, *this->assets_),
+                         MessageContext::Original);
+    }
+    else if (name == "PRIVMSGSENT"_L1)
+    {
+        // Has no payload; sendWhisper() already showed the line
     }
     else if (name == "ERR"_L1)
     {

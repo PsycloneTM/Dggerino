@@ -384,6 +384,40 @@ std::optional<DggChatMessage> parseDggChatMessage(const QJsonObject &obj,
     return msg;
 }
 
+std::optional<DggChatMessage> parseDggWhisper(const QJsonObject &obj,
+                                              qint64 nowMs)
+{
+    DggChatMessage msg;
+    msg.user = DggUser::fromJson(obj);
+    msg.rawText = obj.value("data"_L1).toString();
+    if (msg.user.nick.isEmpty() || msg.rawText.isEmpty())
+    {
+        return std::nullopt;
+    }
+
+    msg.timestampMs = dggTimestampMs(obj, nowMs);
+
+    // `messageid` is a number or a string depending on the server
+    const auto messageId = obj.value("messageid"_L1);
+    QString key;
+    if (messageId.isDouble())
+    {
+        key = QString::number(toInt64(messageId));
+    }
+    else
+    {
+        key = messageId.toString();
+    }
+    msg.hash = key.isEmpty() ? dggMessageHash(msg.timestampMs, msg.user.id,
+                                              u"pm|"_s + msg.rawText)
+                             : u"pm|"_s + key;
+
+    // chat-gui shows a whisper as plain text: no /me, no greentext
+    msg.text = msg.rawText;
+    msg.isWhisper = true;
+    return msg;
+}
+
 std::optional<DggDeath> parseDggDeath(const QJsonObject &obj, qint64 nowMs)
 {
     DggDeath death;

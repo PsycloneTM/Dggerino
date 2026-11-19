@@ -7,10 +7,13 @@
 
 #include <pajlada/signals/signalholder.hpp>
 #include <QDateTime>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QObject>
 #include <QString>
 
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <memory>
@@ -37,9 +40,10 @@ void dggLoadSiteImages(std::function<void()> done = {});
 
 /// Asks the site for the profile of `nick`. `done` gets the profile, or
 /// nullopt and the HTTP status (0 if there was none) when the site refused or
-/// had nothing. The request is anonymous unless the environment variable
-/// CHATTERINO_DGG_COOKIE holds a `Cookie` header value the user chose to
-/// supply. GUI thread only.
+/// had nothing. When a DGG account is logged in the login key is sent as the
+/// `authtoken` cookie; if the site refuses it (401/403) the request is made
+/// again anonymously, and only that second answer is reported. GUI thread
+/// only.
 void dggFetchUserInfo(
     const QString &nick,
     std::function<void(const std::optional<DggProfile> &, int status)> done);
@@ -67,11 +71,37 @@ public:
     /// card, which draws a user's flairs.
     const DggAssets *assets() const;
 
+    /// Sends `text` to the chat as the logged-in user. Nothing is shown
+    /// locally: the message appears when the server echoes it (which also
+    /// keeps it from showing twice). Whatever stops it (no login, too long, a
+    /// slash command, not connected) is shown to the user as a system line in
+    /// `chan` instead. Must be called from the GUI thread.
+    void sendChatMessage(DggChannel &chan, const QString &text);
+
+    /// Sends a private message (`/w nick text`) as the logged-in user. Unlike
+    /// public chat, the server's `PRIVMSGSENT` carries no text, so the line is
+    /// shown here as soon as it was handed to the socket. Problems are shown
+    /// as system lines in `chan`. Must be called from the GUI thread.
+    void sendWhisper(DggChannel &chan, const QString &nick,
+                     const QString &text);
+
+    /// Votes for option `option` (1-based) of the poll that is running, as
+    /// chat-gui does when an option is clicked or its number is typed. Does
+    /// nothing if no poll is running or the number is not an option. Tells the
+    /// user in `chan` if they are not logged in or have already voted. The
+    /// banner changes when the server answers (`VOTECOUNTED`). GUI thread.
+    void castPollVote(DggChannel &chan, int option);
+
 private:
     void ensureConnected(const std::shared_ptr<DggChannel> &chan);
 
     void onSocketOpened();
     void onSocketClosed(std::chrono::milliseconds retryIn);
+    /// `ME`: tells who the server thinks we are (a guest has no user).
+    void onMe(DggChannel &chan, const QJsonObject &payload);
+    /// The active destiny.gg account changed (login, logout, switch):
+    /// reconnects so the connection is made as the new user.
+    void onAccountChanged();
     /// Entry point for frames from the websocket. Holds them back until the
     /// emote and flair manifests and the site images are loaded, so the
     /// backlog isn't built without emotes or the icon of a death line.
@@ -129,6 +159,9 @@ private:
     std::unique_ptr<DggAssets> assets_;
     std::vector<DggFrame> pendingFrames_;
     bool siteImagesReady_ = false;
+    /// `ME` named a user on the current connection.
+    bool authenticated_ = false;
+    bool accountSignalConnected_ = false;
     std::unique_ptr<DggWebSocket> socket_;
     pajlada::Signals::SignalHolder signalHolder_;
 };

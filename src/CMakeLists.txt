@@ -465,6 +465,10 @@ set(SOURCE_FILES
         providers/colors/ColorProvider.cpp
         providers/colors/ColorProvider.hpp
 
+        providers/dgg/DggAccount.cpp
+        providers/dgg/DggAccount.hpp
+        providers/dgg/DggAccountManager.cpp
+        providers/dgg/DggAccountManager.hpp
         providers/dgg/DggAssets.cpp
         providers/dgg/DggAssets.hpp
         providers/dgg/DggChannel.cpp
@@ -862,6 +866,8 @@ set(SOURCE_FILES
         widgets/dialogs/font/PreviewWidget.cpp
         widgets/dialogs/font/PreviewWidget.hpp
 
+        widgets/dialogs/DggLoginPage.cpp
+        widgets/dialogs/DggLoginPage.hpp
         widgets/dialogs/KickLoginPage.cpp
         widgets/dialogs/KickLoginPage.hpp
         widgets/dialogs/LastRunCrashDialog.cpp
@@ -928,6 +934,8 @@ set(SOURCE_FILES
         widgets/helper/IconDelegate.hpp
         widgets/helper/InvisibleSizeGrip.cpp
         widgets/helper/InvisibleSizeGrip.hpp
+        widgets/helper/DggAccountSwitchWidget.cpp
+        widgets/helper/DggAccountSwitchWidget.hpp
         widgets/helper/KickAccountSwitchWidget.cpp
         widgets/helper/KickAccountSwitchWidget.hpp
         widgets/helper/LiveIndicator.cpp

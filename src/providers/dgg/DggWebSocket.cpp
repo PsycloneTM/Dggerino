@@ -3,6 +3,7 @@
 #include "common/QLogging.hpp"
 #include "util/PostToThread.hpp"
 
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QPointer>
 #include <QRandomGenerator>
@@ -131,6 +132,51 @@ DggWebSocket::~DggWebSocket()
     this->pool_.reset();
 }
 
+bool dggIsPlausibleLoginKey(const QString &key)
+{
+    if (key.isEmpty() || key.size() > 256)
+    {
+        return false;
+    }
+    for (const QChar c : key)
+    {
+        if (c.unicode() <= 0x20 || c.unicode() >= 0x7F || c == u';' ||
+            c == u',' || c == u'"' || c == u'\\')
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+void DggWebSocket::setAuthToken(const QString &key)
+{
+    const auto trimmed = key.trimmed();
+    if (!trimmed.isEmpty() && !dggIsPlausibleLoginKey(trimmed))
+    {
+        // Not the key itself: it must never reach a log
+        qCWarning(chatterinoDgg) << "The login key has characters that can't "
+                                    "be sent; connecting as a guest";
+        this->authToken_.clear();
+        return;
+    }
+    this->authToken_ = trimmed;
+}
+
+bool DggWebSocket::send(const QString &name, const QJsonObject &payload)
+{
+    if (!this->isOpen())
+    {
+        return false;
+    }
+
+    QByteArray data = name.toUtf8();
+    data.append(' ');
+    data.append(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+    this->handle_.sendText(data);
+    return true;
+}
+
 void DggWebSocket::start()
 {
     if (this->wanted_)
@@ -172,9 +218,17 @@ void DggWebSocket::connectNow()
     // The browser sends this Origin, and the server may check it.
     std::vector<std::pair<std::string, std::string>> headers;
     headers.emplace_back("Origin", "https://www.destiny.gg");
+    if (!this->authToken_.isEmpty())
+    {
+        // The login key. Only the fact that there is one is ever logged.
+        headers.emplace_back("Cookie",
+                             "authtoken=" + this->authToken_.toStdString());
+    }
 
     qCDebug(chatterinoDgg) << "Connecting to" << this->url_
-                           << "attempt:" << this->retryAttempts_;
+                           << "attempt:" << this->retryAttempts_ << "as"
+                           << (this->authToken_.isEmpty() ? "guest"
+                                                          : "a logged-in user");
 
     this->handle_ = this->pool_->createSocket(
         WebSocketOptions{
@@ -222,6 +276,23 @@ void DggWebSocket::handleFrames(uint64_t id, std::vector<DggFrame> frames)
         {
             // stop() or a reconnect happened inside a callback
             return;
+        }
+
+        if (frame.name == "PING"_L1)
+        {
+            // chat-gui answers with the same data
+            QByteArray pong = "PONG";
+            if (frame.payload.isObject())
+            {
+                pong.append(' ');
+                pong.append(QJsonDocument(frame.payload.toObject())
+                                .toJson(QJsonDocument::Compact));
+            }
+            if (this->isOpen())
+            {
+                this->handle_.sendText(pong);
+            }
+            continue;
         }
 
         if (frame.name == "ERR"_L1)

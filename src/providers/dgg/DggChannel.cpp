@@ -1,7 +1,11 @@
 #include "providers/dgg/DggChannel.hpp"
 
+#include "Application.hpp"
+#include "controllers/accounts/AccountController.hpp"
 #include "messages/Message.hpp"
 #include "messages/MessageFlag.hpp"
+#include "providers/dgg/DggAccountManager.hpp"
+#include "providers/dgg/DggChatServer.hpp"
 
 #include <utility>
 
@@ -30,13 +34,17 @@ const QString &DggChannel::getDisplayName() const
 
 bool DggChannel::canSendMessage() const
 {
-    // Read-only for now (see DGG_PLAN.md, phase 6)
-    return false;
+    return getApp()->getAccounts()->dgg.isLoggedIn();
 }
 
 bool DggChannel::isWritable() const
 {
-    return false;
+    return getApp()->getAccounts()->dgg.isLoggedIn();
+}
+
+void DggChannel::sendMessage(const QString &message)
+{
+    getApp()->getDggChatServer()->sendChatMessage(*this, message);
 }
 
 bool DggChannel::markSeen(const QString &key)

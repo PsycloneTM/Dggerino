@@ -122,6 +122,12 @@ struct DggChatMessage {
     /// (subscribers and privileged users only).
     bool greentext = false;
 
+    /// A private message (`PRIVMSG`), not a line of public chat. For one the
+    /// user received, `user` is the sender. For one the user sent, `user` is
+    /// the user themself and `whisperTarget` is who it went to.
+    bool isWhisper = false;
+    QString whisperTarget;
+
     QDateTime time() const;
 };
 
@@ -378,6 +384,12 @@ qint64 dggTimestampMs(const QJsonObject &obj, qint64 nowMs);
 /// Parses a `MSG` payload. Returns nullopt if it has no nick or no text.
 std::optional<DggChatMessage> parseDggChatMessage(const QJsonObject &obj,
                                                   qint64 nowMs);
+
+/// Parses a `PRIVMSG` payload (a whisper somebody sent to the user). Returns
+/// nullopt if it has no nick or no text. `hash` is built from `messageid`
+/// when the server sends one, so a reconnect can't show a whisper twice.
+std::optional<DggChatMessage> parseDggWhisper(const QJsonObject &obj,
+                                              qint64 nowMs);
 
 /// The line for `MUTE`, `UNMUTE`, `BAN` and `UNBAN`, worded like chat-gui.
 /// Returns an empty string for any other event or a payload without a target.

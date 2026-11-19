@@ -5,6 +5,7 @@
 #pragma once
 
 #include "common/SignalVector.hpp"
+#include "providers/dgg/DggAccountManager.hpp"
 #include "providers/kick/KickAccountManager.hpp"
 #include "providers/twitch/TwitchAccountManager.hpp"
 
@@ -32,6 +33,7 @@ public:
 
     TwitchAccountManager twitch;
     KickAccountManager kick;
+    DggAccountManager dgg;
 
 private:
     SignalVector<std::shared_ptr<Account>> accounts_;

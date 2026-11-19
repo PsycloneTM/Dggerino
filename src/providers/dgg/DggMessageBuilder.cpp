@@ -2,12 +2,15 @@
 
 #include "Application.hpp"
 #include "common/LinkParser.hpp"
+#include "controllers/accounts/AccountController.hpp"
 #include "controllers/emotes/EmoteController.hpp"
 #include "controllers/highlights/HighlightController.hpp"
 #include "controllers/highlights/HighlightResult.hpp"
 #include "messages/Image.hpp"
 #include "messages/MessageElement.hpp"
 #include "messages/SpriteSheet.hpp"
+#include "providers/dgg/DggAccount.hpp"
+#include "providers/dgg/DggAccountManager.hpp"
 #include "providers/dgg/DggAssets.hpp"
 #include "providers/dgg/DggChannel.hpp"
 #include "providers/dgg/DggCombo.hpp"
@@ -705,7 +708,8 @@ ImagePtr vestaboardImage(const std::vector<std::vector<int>> &rows)
 /// notices: the line gets the highlight colour, and the alert says what to
 /// play or flash. Nothing is triggered here.
 HighlightAlert processHighlights(DggMessageBuilder &builder,
-                                 const MessageParseArgs &args)
+                                 const MessageParseArgs &args,
+                                 bool self = false)
 {
     if (getSettings()->isBlacklistedUser(builder->loginName))
     {
@@ -718,7 +722,7 @@ HighlightAlert processHighlights(DggMessageBuilder &builder,
         .senderName = builder->loginName,
         .originalMessage = builder->messageText,
         .messageFlags = builder->flags,
-        .self = false,
+        .self = self,
         .runContext =
             filters::RunContext{
                 .message = builder.message(),
@@ -793,7 +797,8 @@ void DggMessageBuilder::markBacklog()
 MessagePtrMut DggMessageBuilder::makeChatMessage(DggChannel *channel,
                                                  const DggChatMessage &msg,
                                                  bool backlog,
-                                                 const DggAssets &assets)
+                                                 const DggAssets &assets,
+                                                 HighlightAlert *alert)
 {
     DggMessageBuilder builder(channel, msg.time());
     builder->channelName = channel->getName();
@@ -809,6 +814,11 @@ MessagePtrMut DggMessageBuilder::makeChatMessage(DggChannel *channel,
     if (msg.isAction)
     {
         builder->flags.set(MessageFlag::Action);
+    }
+    if (msg.isWhisper)
+    {
+        // Private: never write it to the channel's log file
+        builder->flags.set(MessageFlag::Whisper, MessageFlag::DoNotLog);
     }
 
     // Flairs first, like chat-gui.
@@ -826,7 +836,7 @@ MessagePtrMut DggMessageBuilder::makeChatMessage(DggChannel *channel,
 
     const QString nick = displayedNick(msg.user.nick);
     QString usernameText = nick;
-    if (!msg.isAction)
+    if (!msg.isAction && !msg.isWhisper)
     {
         usernameText.append(u':');
     }
@@ -840,6 +850,14 @@ MessagePtrMut DggMessageBuilder::makeChatMessage(DggChannel *channel,
     }
     // a click opens the user card (ChannelView::showUserInfoPopup)
     nickElement->setLink(Link(Link::UserInfo, msg.user.nick));
+    if (msg.isWhisper)
+    {
+        builder.emplace<TextElement>(
+            msg.whisperTarget.isEmpty()
+                ? QStringLiteral("whispers:")
+                : QStringLiteral("whispered to %1:").arg(msg.whisperTarget),
+            MessageElementFlag::Text, MessageColor::System);
+    }
 
     // Emotes look different depending on who says them and on what sits next
     // to them
@@ -871,6 +889,25 @@ MessagePtrMut DggMessageBuilder::makeChatMessage(DggChannel *channel,
     builder->messageText = messageText;
     builder->searchText = builder->loginName + QChar(u' ') + nick +
                           QStringLiteral(": ") + messageText;
+
+    if (!msg.isWhisper)
+    {
+        // Your own lines never highlight (they come back from the server
+        // like everyone else's)
+        const auto account = getApp()->getAccounts()->dgg.current();
+        const bool self =
+            !account->isAnonymous() &&
+            msg.user.nick.compare(account->username(), Qt::CaseInsensitive) ==
+                0;
+
+        const auto result =
+            processHighlights(builder, MessageParseArgs{}, self);
+        if (alert != nullptr && !backlog)
+        {
+            // History is coloured but must not beep
+            *alert = result;
+        }
+    }
 
     return builder.release();
 }

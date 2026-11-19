@@ -8,6 +8,8 @@
 #include "controllers/accounts/AccountController.hpp"
 #include "controllers/highlights/HighlightCheck.hpp"
 #include "controllers/highlights/HighlightResult.hpp"
+#include "providers/dgg/DggAccount.hpp"
+#include "providers/dgg/DggAccountManager.hpp"
 #include "providers/kick/KickAccount.hpp"
 #include "providers/twitch/TwitchAccount.hpp"  // IWYU pragma: keep
 
@@ -49,14 +51,30 @@ HighlightCheck YourUsernameHighlight::buildCheck() const
         };
     }();
 
-    if (!twitchRe && !kickRe)
+    auto dggRe = [&]() -> std::optional<QRegularExpression> {
+        auto user = getApp()->getAccounts()->dgg.current();
+        auto name = user->username();
+        if (user->isAnonymous() || name.isEmpty())
+        {
+            return std::nullopt;
+        }
+
+        return QRegularExpression{
+            REGEX_START_BOUNDARY % QRegularExpression::escape(name) %
+                REGEX_END_BOUNDARY,
+            QRegularExpression::UseUnicodePropertiesOption |
+                QRegularExpression::CaseInsensitiveOption,
+        };
+    }();
+
+    if (!twitchRe && !kickRe && !dggRe)
     {
         return {};
     }
 
     return {
-        [highlight = *this, twitchRe,
-         kickRe](const Params &p) -> std::optional<HighlightResult> {
+        [highlight = *this, twitchRe, kickRe,
+         dggRe](const Params &p) -> std::optional<HighlightResult> {
             if (p.self)
             {
                 return std::nullopt;
@@ -79,9 +97,13 @@ HighlightCheck YourUsernameHighlight::buildCheck() const
                     }
                 }
                 break;
-                case MessagePlatform::Dgg:
-                    // No DGG account yet, so there's no username to match
-                    return std::nullopt;
+                case MessagePlatform::Dgg: {
+                    if (!dggRe || !dggRe->match(p.originalMessage).hasMatch())
+                    {
+                        return std::nullopt;
+                    }
+                }
+                break;
             }
 
             return highlight.outcome.makeSimpleResult<H>();

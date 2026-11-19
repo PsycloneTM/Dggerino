@@ -71,10 +71,16 @@ public:
     /// A chat line: timestamp, flair badges, nick (in its flair colour) and
     /// the text with emotes and links. Greentext is coloured, `/me` lines
     /// have no colon after the nick.
+    ///
+    /// The user's highlights run over the line (your own name, highlight
+    /// phrases, ...), so it can get the highlight colour. Whispers are not
+    /// checked. `alert`, if given, receives the sound and window alert the
+    /// highlight asks for; it is left empty for backlog lines and for your own
+    /// lines. Nothing is triggered here.
     static MessagePtrMut makeChatMessage(DggChannel *channel,
                                          const DggChatMessage &msg,
-                                         bool backlog,
-                                         const DggAssets &assets);
+                                         bool backlog, const DggAssets &assets,
+                                         HighlightAlert *alert = nullptr);
 
     /// The line chat-gui shows for repeated emotes: the time of the first
     /// line, the emote once, and how many times it was sent. No nick or

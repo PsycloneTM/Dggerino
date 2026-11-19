@@ -12,6 +12,7 @@
 #include "controllers/highlights/types/AnyHighlight.hpp"
 #include "controllers/highlights/types/Common.hpp"
 #include "controllers/highlights/types/LowTrustUserHighlight.hpp"
+#include "providers/dgg/DggAccountManager.hpp"  // IWYU pragma: keep
 #include "providers/twitch/TwitchAccount.hpp"  // IWYU pragma: keep
 #include "singletons/Settings.hpp"
 
@@ -85,6 +86,12 @@ HighlightController::HighlightController(Settings &settings,
     this->signalHolder_.managedConnect(
         accounts->kick.currentUserChanged, [this, &settings] {
             qCDebug(LOG) << "Rebuild checks because Kick user swapped accounts";
+            this->rebuildChecks(settings);
+        });
+
+    this->signalHolder_.managedConnect(
+        accounts->dgg.currentUserChanged, [this, &settings] {
+            qCDebug(LOG) << "Rebuild checks because DGG user swapped accounts";
             this->rebuildChecks(settings);
         });
 
