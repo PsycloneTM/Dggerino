@@ -2,6 +2,8 @@
 
 #include "Test.hpp"
 
+#include <algorithm>
+
 using namespace chatterino;
 
 namespace {
@@ -718,4 +720,81 @@ TEST(DggEmoteCss, CoggersSpinsInEveryPositionOfAMessage)
     const size_t quarter = even.sprite.poses.size() / 4;
     EXPECT_NE(even.sprite.poses[quarter].matrix,
               odd.sprite.poses[quarter].matrix);
+}
+
+namespace {
+
+// OverRustle as on the site: it shakes by moving itself 3 px with `left`.
+// Slider comes in from the left like GIGASIP: a box that moves, not a shake.
+const char *const NUDGE_CSS = R"CSS(
+.emote.OverRustle {
+    background-image: url("653c2e9e780ae.png");
+    height: 30px;
+    width: 33px;
+}
+.msg-chat .emote.OverRustle {
+    margin-top: -30px;
+    top: 7.5px;
+}
+.emote.Slider {
+    background-image: url("65f6c4a6484ee.png");
+    height: 30px;
+    width: 29px;
+}
+.msg-chat .emote.Slider {
+    margin-top: -30px;
+    top: 7.5px;
+}
+@keyframes OverRustle-anim {
+    from { left: 0; }
+    to { left: 3px; }
+}
+.emote.OverRustle {
+    animation: OverRustle-anim 100ms 7;
+}
+@keyframes Slider-anim {
+  0% { left: -29px; }
+  100% { left: 0px; }
+}
+.emote.Slider {
+  animation: Slider-anim 1.5s 1 ease-out;
+}
+)CSS";
+
+const DggEmoteCss &nudgeCss()
+{
+    static const DggEmoteCss parsed =
+        DggEmoteCss::parse(QString::fromUtf8(NUDGE_CSS));
+    return parsed;
+}
+
+}  // namespace
+
+TEST(DggEmoteCss, LeftNudgeOfTheEmoteIsPlayedAsAShift)
+{
+    const auto style = nudgeCss().resolve(QStringLiteral("OverRustle"),
+                                          userContext("someone"), QSize(33, 30));
+    ASSERT_TRUE(style.valid);
+    EXPECT_TRUE(style.animated());
+    EXPECT_EQ(style.sprite.loopCount, 7);
+    ASSERT_GT(style.sprite.poses.size(), 2U);
+    EXPECT_EQ(style.sprite.poses.size(), style.sprite.offsets.size());
+
+    // the picture moves right by up to 3 px and is back where it was at the end
+    double most = 0.0;
+    for (const auto &pose : style.sprite.poses)
+    {
+        EXPECT_GE(pose.matrix[4], -0.01);
+        EXPECT_LE(pose.matrix[4], 3.01);
+        most = std::max(most, pose.matrix[4]);
+    }
+    EXPECT_GT(most, 1.0);
+}
+
+TEST(DggEmoteCss, SlideInOfTheEmoteIsNotAShake)
+{
+    const auto style = nudgeCss().resolve(QStringLiteral("Slider"),
+                                          userContext("someone"), QSize(29, 30));
+    ASSERT_TRUE(style.valid);
+    EXPECT_FALSE(style.animated());
 }

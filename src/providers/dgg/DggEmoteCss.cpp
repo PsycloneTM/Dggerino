@@ -2488,15 +2488,58 @@ void bakeAnimations(const Props &props, const Keyframes &keyframes,
         }
 
         std::vector<anim::Keyframe> frames;
+        // `left` / `top` of the stops (the emote nudges itself: OverRustle's
+        // shake), and whether all of them can be played as a small shift
+        struct Nudge {
+            std::optional<double> x;
+            std::optional<double> y;
+        };
+        std::vector<Nudge> nudges;
+        bool nudgeable = true;
+        bool nudged = false;
         for (const auto &stop : found->second)
         {
             anim::Keyframe frame;
             frame.offset = stop.percent / 100.0;
+            Nudge nudge;
             for (const auto &decl : stop.decls)
             {
                 const auto value = resolveVars(decl.value, props);
                 string text = value ? *value : decl.value;
                 string name = decl.name;
+                if (const auto lower = toLower(name);
+                    lower == "left" || lower == "top")
+                {
+                    // the element's own `left` / `top` is where the nudge
+                    // starts from
+                    const auto it = props.find(lower);
+                    const auto baseText =
+                        it != props.end() ? resolveVars(it->second, props)
+                                          : std::nullopt;
+                    const auto base =
+                        baseText ? parseLengthPx(*baseText) : std::nullopt;
+                    const auto px = parseLengthPx(text);
+                    const double limit =
+                        0.25 * (lower == "left" ? style.frameSize.width()
+                                                : style.frameSize.height());
+                    if (!px || std::abs(*px - base.value_or(0.0)) > limit)
+                    {
+                        // a slide (GIGASIP comes in from 29 px to the left,
+                        // YEEHAW rides across): a box that moves, not a nudge
+                        nudgeable = false;
+                    }
+                    else
+                    {
+                        (lower == "left" ? nudge.x : nudge.y) =
+                            *px - base.value_or(0.0);
+                        nudged = true;
+                    }
+                }
+                if (name == "translate" || name == "background-position")
+                {
+                    // already a shift of its own
+                    nudgeable = false;
+                }
                 if (name == "background-position" &&
                     sheetSize == style.frameSize)
                 {
@@ -2518,6 +2561,33 @@ void bakeAnimations(const Props &props, const Keyframes &keyframes,
                 frame.decls.push_back(anim::KeyframeDecl{name, text});
             }
             frames.push_back(std::move(frame));
+            nudges.push_back(nudge);
+        }
+
+        if (nudged && nudgeable)
+        {
+            // `left` / `top` of a positioned emote shift the whole picture,
+            // which a pose can do as a `translate` (the part pushed out of
+            // the box is cut off, as with every shift here)
+            for (size_t i = 0; i < frames.size(); i++)
+            {
+                std::erase_if(frames[i].decls, [](const anim::KeyframeDecl &d) {
+                    const auto lower = toLower(d.name);
+                    return lower == "left" || lower == "top";
+                });
+                if (nudges[i].x || nudges[i].y)
+                {
+                    char buffer[96];
+                    std::snprintf(buffer, sizeof buffer, "%.4gpx %.4gpx",
+                                  nudges[i].x.value_or(0.0),
+                                  nudges[i].y.value_or(0.0));
+                    frames[i].decls.push_back(
+                        anim::KeyframeDecl{"translate", buffer});
+                }
+            }
+            approximations.push_back("animation " + spec.name +
+                                     ": left / top played as a shift of the "
+                                     "picture");
         }
 
         string problem;
