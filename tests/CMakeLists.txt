@@ -17,6 +17,7 @@ set(test_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/DggEmoteCss.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/DggFrame.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/DggManifest.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/DggMentions.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/DggMessage.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/Emojis.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/ExponentialBackoff.cpp

@@ -12,6 +12,7 @@
 #include "providers/dgg/DggChannel.hpp"
 #include "providers/dgg/DggCombo.hpp"
 #include "providers/dgg/DggFrame.hpp"
+#include "providers/dgg/DggMentions.hpp"
 #include "providers/dgg/DggMessage.hpp"
 #include "providers/dgg/DggMessageBuilder.hpp"
 #include "providers/dgg/DggWebSocket.hpp"
@@ -74,6 +75,48 @@ void fetchUserInfo(
                 return;
             }
             done(std::nullopt, status);
+        })
+        .execute();
+}
+
+/// Asks the site for the mentions at `url`. Like fetchUserInfo(): when
+/// `withKey` the login key goes along as the `authtoken` cookie, and an
+/// answer of 401/403 is asked for again without it. `done` gets the parsed
+/// answer (nullopt if the site said no or sent junk), and `failed` is true if
+/// no usable HTTP answer arrived at all.
+void fetchMentionsFromSite(
+    const QUrl &url, bool withKey,
+    std::function<void(const std::optional<std::vector<DggMention>> &,
+                       bool failed)>
+        done)
+{
+    auto request = NetworkRequest(url);
+    if (withKey)
+    {
+        const auto account = getApp()->getAccounts()->dgg.current();
+        if (account && !account->loginKey().isEmpty())
+        {
+            request = std::move(request).header(
+                "Cookie", ("authtoken=" + account->loginKey()).toUtf8());
+        }
+        else
+        {
+            withKey = false;
+        }
+    }
+
+    std::move(request)
+        .onSuccess([done](NetworkResult result) {
+            done(parseDggMentions(result.parseJson()), false);
+        })
+        .onError([url, withKey, done](const NetworkResult &result) {
+            const auto status = result.status().value_or(0);
+            if (withKey && (status == 401 || status == 403))
+            {
+                fetchMentionsFromSite(url, false, done);
+                return;
+            }
+            done(std::nullopt, true);
         })
         .execute();
 }
@@ -483,6 +526,19 @@ void DggChatServer::sendChatMessage(DggChannel &chan, const QString &rawText)
         return;
     }
 
+    // `/mentions [nick] [limit]` and its short form `/m`: answered from the
+    // site's API, never said in chat.
+    static const QRegularExpression mentionsCommand(
+        QStringLiteral(R"(^/(?:mentions|m)(?:\s+(.*))?$)"),
+        QRegularExpression::CaseInsensitiveOption |
+            QRegularExpression::DotMatchesEverythingOption);
+    if (const auto mentions = mentionsCommand.match(text);
+        mentions.hasMatch())
+    {
+        this->fetchMentions(chan, mentions.captured(1));
+        return;
+    }
+
     // Like chat-gui, a slash command is never sent as a message (`/me` is the
     // only one the server sees).
     static const QRegularExpression slashCommand(
@@ -586,6 +642,109 @@ void DggChatServer::sendWhisper(DggChannel &chan, const QString &rawNick,
     chan.addMessage(
         DggMessageBuilder::makeChatMessage(&chan, line, false, *this->assets_),
         MessageContext::Original);
+}
+
+void DggChatServer::fetchMentions(DggChannel &chan, const QString &args)
+{
+    assertInGuiThread();
+
+    const auto account = getApp()->getAccounts()->dgg.current();
+    const QString ownNick =
+        (account && getApp()->getAccounts()->dgg.isLoggedIn())
+            ? account->username()
+            : QString{};
+
+    const auto parsed = parseDggMentionsArgs(args, ownNick);
+    if (!parsed.error.isEmpty())
+    {
+        chan.addSystemMessage(parsed.error);
+        return;
+    }
+    if (this->mentionsBusy_)
+    {
+        chan.addSystemMessage(
+            u"Still busy getting %1's mentions"_s.arg(parsed.nick));
+        return;
+    }
+
+    this->mentionsBusy_ = true;
+    chan.addSystemMessage(u"Getting mentions for %1 ..."_s.arg(parsed.nick));
+
+    const auto nick = parsed.nick;
+    const QPointer<DggChatServer> self(this);
+    const std::weak_ptr<DggChannel> weakChan = this->channel_;
+
+    fetchMentionsFromSite(
+        dggMentionsUrl(nick, parsed.limit),
+        getApp()->getAccounts()->dgg.isLoggedIn(),
+        [self, weakChan, nick](
+            const std::optional<std::vector<DggMention>> &mentions,
+            bool failed) {
+            if (!self)
+            {
+                return;
+            }
+            self->mentionsBusy_ = false;
+
+            const auto chan = weakChan.lock();
+            if (!chan || !self->assets_)
+            {
+                // The split was closed while the answer was on its way.
+                return;
+            }
+
+            if (failed || !mentions)
+            {
+                chan->addSystemMessage(
+                    u"No mentions for %1 received. Try again later."_s.arg(
+                        nick));
+                return;
+            }
+            if (mentions->empty())
+            {
+                chan->addSystemMessage(u"No mentions for %1."_s.arg(nick));
+                return;
+            }
+
+            // Whatever was running as a combo is over now
+            self->endCombo(*chan);
+
+            // chat-gui dates the header with the last (newest) entry
+            const auto last =
+                QDateTime::fromMSecsSinceEpoch(mentions->back().timestampMs)
+                    .toLocalTime();
+            chan->addSystemMessage(u"Mentions for %1 last seen %2."_s.arg(
+                nick, dggMentionsDateText(last)));
+
+            for (const auto &mention : *mentions)
+            {
+                DggChatMessage line;
+                if (const auto known = chan->findUser(mention.nick))
+                {
+                    line.user = *known;
+                }
+                line.user.nick =
+                    chan->canonicalNick(mention.nick).value_or(mention.nick);
+                line.rawText = mention.text;
+                line.isAction =
+                    mention.text.startsWith(u"/me "_s, Qt::CaseInsensitive);
+                line.text = line.isAction ? mention.text.mid(4) : mention.text;
+                line.greentext = line.text.startsWith(u'>') &&
+                                 (line.user.isSubscriber() ||
+                                  line.user.isPrivileged());
+                line.timestampMs = mention.timestampMs;
+                // Not the hash of the original line: this one must not be
+                // taken for it (a spotlight finds its line by that id).
+                line.hash = dggMessageHash(line.timestampMs, 0,
+                                           u"mentions|"_s + mention.text);
+
+                // `backlog`: shown as history (dimmed like the replayed
+                // lines, no sound or alert, not written to the log file).
+                chan->addMessage(DggMessageBuilder::makeChatMessage(
+                                     chan.get(), line, true, *self->assets_),
+                                 MessageContext::Original);
+            }
+        });
 }
 
 void DggChatServer::castPollVote(DggChannel &chan, int option)

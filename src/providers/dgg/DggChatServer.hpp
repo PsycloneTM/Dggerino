@@ -92,6 +92,14 @@ public:
     /// banner changes when the server answers (`VOTECOUNTED`). GUI thread.
     void castPollVote(DggChannel &chan, int option);
 
+    /// `/mentions [nick] [limit]` (and `/m`): asks the site for the latest
+    /// lines that mention `nick` (the logged-in user if none is given) and
+    /// adds them to `chan` as history lines, like chat-gui does. `args` is
+    /// the text after the command name. Problems and "none found" are shown
+    /// as system lines in `chan`. Only one request runs at a time. GUI
+    /// thread only.
+    void fetchMentions(DggChannel &chan, const QString &args);
+
 private:
     void ensureConnected(const std::shared_ptr<DggChannel> &chan);
 
@@ -162,6 +170,8 @@ private:
     /// `ME` named a user on the current connection.
     bool authenticated_ = false;
     bool accountSignalConnected_ = false;
+    /// A `/mentions` request is running (chat-gui's `busymentions`).
+    bool mentionsBusy_ = false;
     std::unique_ptr<DggWebSocket> socket_;
     pajlada::Signals::SignalHolder signalHolder_;
 };

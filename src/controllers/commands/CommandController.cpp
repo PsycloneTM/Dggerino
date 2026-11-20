@@ -273,8 +273,8 @@ const std::unordered_map<QString, VariableReplacer> COMMAND_VARS{
 
 /// The commands destiny.gg chat handles itself (see
 /// `DggChatServer::sendChatMessage`). The built-in versions of some of them
-/// (`/w`, `/ignore`, `/unignore`) are Twitch's, so in a DGG channel they must
-/// not run.
+/// (`/w`, `/ignore`, `/unignore`, `/mentions`) are Twitch's, so in a DGG
+/// channel they must not run.
 bool isDggOwnCommand(const QString &name)
 {
     static const QStringList names{
@@ -283,6 +283,7 @@ bool isDggOwnCommand(const QString &name)
         QStringLiteral("/tell"),    QStringLiteral("/t"),
         QStringLiteral("/notify"),  QStringLiteral("/ignore"),
         QStringLiteral("/unignore"), QStringLiteral("/unignoreall"),
+        QStringLiteral("/mentions"), QStringLiteral("/m"),
     };
     return names.contains(name, Qt::CaseInsensitive);
 }
