@@ -1265,7 +1265,13 @@ Dom buildDom(const string &emote, const DggEmoteContext &ctx)
     for (int i = 0; i < elements.size(); i++)
     {
         Node e;
-        if (elements[i].isEmpty())
+        if (elements[i] == DGG_CHAT_USER_ELEMENT)
+        {
+            e.kind = 'L';
+            e.tag = 's';
+            e.classes = {"chat-user"};
+        }
+        else if (elements[i].isEmpty())
         {
             e.kind = 'L';
             e.tag = 'a';

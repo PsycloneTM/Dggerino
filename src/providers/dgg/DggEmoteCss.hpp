@@ -15,6 +15,10 @@
 
 namespace chatterino {
 
+/// What stands in `DggEmoteContext::elements` for a `chat-user` element. It
+/// has a space in it, so it can never be the name of an emote.
+inline const QString DGG_CHAT_USER_ELEMENT = QStringLiteral(" chat-user");
+
 /// What chat-gui's page looks like around an emote, as far as the stylesheet
 /// can tell. chat-gui renders every message as
 ///
@@ -41,6 +45,11 @@ struct DggEmoteContext {
     /// plain text are not elements. This is what selectors such as
     /// `.emote + .emote.Chatting` look at. Empty (with `elementIndex` -1)
     /// stands for a message that only holds the emote itself.
+    ///
+    /// A name of somebody in the text (`@nick`, or a nick of someone in
+    /// chat) is `DGG_CHAT_USER_ELEMENT`: chat-gui makes it a
+    /// `<span class="chat-user">`, which rules like
+    /// `.chat-user + .emote.NoTears` look at.
     QStringList elements;
 
     /// Which of `elements` is the emote being styled.

@@ -278,10 +278,10 @@ void appendWord(DggMessageBuilder &builder, QStringView word,
 }
 
 /// The elements chat-gui would put directly inside the message's text, in
-/// order: the emote's name for an emote, an empty string for anything else
-/// that is an element (a link, an `@mention`). Plain words are text nodes and
-/// don't count. The emote CSS looks at these to tell which emotes sit next to
-/// each other.
+/// order: the emote's name for an emote, `DGG_CHAT_USER_ELEMENT` for a name
+/// (`@mention` or a nick), an empty string for anything else that is an
+/// element (a link). Plain words are text nodes and don't count. The emote CSS
+/// looks at these to tell which emotes sit next to each other.
 struct TextElements {
     QStringList names;
     /// For every word, the index into `names` of the element it became, or -1
@@ -323,13 +323,18 @@ TextElements collectElements(const QStringList &words, const DggUser &user,
             out.indexOfWord.push_back(static_cast<int>(out.names.size()));
             out.names.append(word);
         }
-        else if (isMention(word) || linkparser::parse(word) ||
-                 asNickWord(word, channel))
+        else if (linkparser::parse(word))
         {
-            // (a bare nick of somebody in chat is a `<span class="chat-user">`
-            // on the site as well, and counts for `:nth-child()`)
             out.indexOfWord.push_back(static_cast<int>(out.names.size()));
             out.names.append(QString());
+        }
+        else if (isMention(word) || asNickWord(word, channel))
+        {
+            // `@nick` and the bare nick of somebody in chat are a
+            // `<span class="chat-user">` on the site, which emote rules look
+            // at (NoTears doesn't throw its banana next to one)
+            out.indexOfWord.push_back(static_cast<int>(out.names.size()));
+            out.names.append(DGG_CHAT_USER_ELEMENT);
         }
         else
         {

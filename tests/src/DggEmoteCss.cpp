@@ -798,3 +798,141 @@ TEST(DggEmoteCss, SlideInOfTheEmoteIsNotAShake)
     ASSERT_TRUE(style.valid);
     EXPECT_FALSE(style.animated());
 }
+
+namespace {
+
+// NoTears as on the site (copied from emotes.css): it throws a banana, its
+// `::before`, unless it is alone, last after an emote, or a name (`.chat-user`)
+// sits right in front of it.
+const char *const CHAT_USER_CSS = R"CSS(
+.emote.NoTears {
+    background-image: url("5c2bbd3411c78.png");
+    height: 30px;
+    width: 31px;
+}
+.msg-chat .emote.NoTears {
+    margin-top: -30px;
+    top: 7.5px;
+}
+@keyframes NoTears-z {
+  0%, 100% { z-index: 2; }
+}
+@keyframes NoTears-z-hover {  
+  0%, 100% { z-index: 2; }
+}
+@keyframes NoTears-size {
+  0%, 100% { 
+  width: 69px;
+  background-position: 6px;
+  margin-left: -6px;
+  margin-right: -20px; }
+}
+
+@keyframes NoTears-size-hover {
+  0%, 100% {
+  width: 69px;
+  background-position: 6px;
+  margin-left: -6px;
+  margin-right: -20px; }
+}
+
+.emote.NoTears {
+  --t-NoTears: 0.8s;
+  margin-right: 12px;
+  background-repeat: no-repeat;
+  animation: NoTears-z var(--t-NoTears) 1 -.15s, NoTears-size var(--t-NoTears) 3 -.15s;
+}
+
+.emote.NoTears:hover {
+  animation: NoTears-z-hover var(--t-NoTears) 1, NoTears-size-hover var(--t-NoTears) 3;
+}
+
+@keyframes NoTears-anim {
+  0% { transform: rotate(-60deg) scaleX(.4); right: 47px; top: 12px; }
+  15% { transform: rotate(-120deg) scaleX(.4); right: 57px; top: 12px; animation-timing-function: linear; }
+  48% { transform: rotate(150deg) scaleX(.4); right: 17px; top: 1px; animation-timing-function: linear; }
+  80% {transform: rotate(500deg) scaleX(.4); right: -21px; top: 9px; animation-timing-function: linear; }
+}
+@keyframes NoTears-anim-hover {
+  0% { transform: rotate(-60deg) scaleX(.4); right: 47px; top: 12px; }
+  20% { transform: rotate(-120deg) scaleX(.4); right: 57px; top: 12px; animation-timing-function: linear; }
+  48% { transform: rotate(150deg) scaleX(.4); right: 17px; top: 1px; animation-timing-function: linear; }
+  80% {transform: rotate(500deg) scaleX(.4); right: -21px; top: 9px; animation-timing-function: linear; }
+}
+.emote.NoTears::before{
+    content: "🍌";
+    text-indent: 0;
+    color: white;
+    font-size: 17px;
+    line-height: initial;
+    position: absolute;
+    opacity: 1;
+    top: -34px;
+    text-shadow: none;
+    width: 17px;
+    transform: scaleX(.4) rotate(90deg);
+    transform-origin: 55% 55%;
+    animation: NoTears-anim var(--t-NoTears) 3 ease -.15s;
+}
+.emote.NoTears:hover::before {
+    animation: NoTears-anim-hover var(--t-NoTears) infinite ease;
+}
+
+.emote.NoTears:only-child,
+.emote + .emote.NoTears:last-child,
+.chat-user + .emote.NoTears,
+.emote.NoTears:has(+ .emote.Clap),
+.emote.NoTears:has(+ .emote.RapThis),
+.emote.NoTears:has(+ .emote.Sippy),
+.emote.NoTears:has(+ .emote.ZoomerSippy),
+.emote.NoTears:has(+ .emote.BoomerSippy),
+.emote.NoTears:has(+ .emote.NoTears) {
+  width: 31px;
+  margin-right: 0 !important;
+  animation: none;
+}
+.emote.NoTears:only-child::before,
+.emote + .emote.NoTears:last-child::before,
+.chat-user + .emote.NoTears::before,
+.emote.NoTears:has(+ .emote.Clap)::before,
+.emote.NoTears:has(+ .emote.RapThis)::before,
+.emote.NoTears:has(+ .emote.Sippy)::before,
+.emote.NoTears:has(+ .emote.ZoomerSippy)::before,
+.emote.NoTears:has(+ .emote.BoomerSippy)::before,
+.emote.NoTears:has(+ .emote.NoTears)::before {
+  animation: none;
+}
+)CSS";
+
+const DggEmoteCss &chatUserCss()
+{
+    static const DggEmoteCss parsed =
+        DggEmoteCss::parse(QString::fromUtf8(CHAT_USER_CSS));
+    return parsed;
+}
+
+}  // namespace
+
+TEST(DggEmoteCss, ChatUserInFrontOfTheEmoteCountsAsAChatUser)
+{
+    const QString name = QStringLiteral("NoTears");
+
+    // `Destiny NoTears text`: a name, then the emote: no animation
+    auto afterName = userContext("someone");
+    afterName.elements = {DGG_CHAT_USER_ELEMENT, name, QString()};
+    afterName.elementIndex = 1;
+    const auto still =
+        chatUserCss().resolve(name, afterName, QSize(31, 30));
+    ASSERT_TRUE(still.valid);
+    EXPECT_FALSE(still.sprite.hasOverlays());
+    EXPECT_FALSE(still.animated());
+
+    // a link in front of it is not a name: the rule doesn't apply
+    auto afterLink = afterName;
+    afterLink.elements = {QString(), name, QString()};
+    const auto moving =
+        chatUserCss().resolve(name, afterLink, QSize(31, 30));
+    ASSERT_TRUE(moving.valid);
+    // the banana
+    EXPECT_TRUE(moving.sprite.hasOverlays());
+}
