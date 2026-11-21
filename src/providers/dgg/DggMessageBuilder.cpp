@@ -1262,13 +1262,41 @@ std::pair<MessagePtrMut, HighlightAlert> DggMessageBuilder::makeBroadcastMessage
     DggChannel *channel, const QDateTime &time, const DggUser &user,
     const QString &text, bool backlog, const DggAssets &assets)
 {
-    DggMessageBuilder builder(systemMessage, channel, time);
+    // Built like a Twitch announcement: a "Broadcast" header on its own line
+    // (shown while "Show announcement header" is on), then the message. The
+    // header has to come before the message's own timestamp, so this does not
+    // use the system message constructor, which adds that first.
+    DggMessageBuilder builder(channel);
+    builder->timestamp = time;
     builder->channelName = channel->getName();
-    builder->flags.set(MessageFlag::DggBroadcast);
+    builder->flags.set(MessageFlag::System, MessageFlag::DggBroadcast);
     if (backlog)
     {
         builder.markBacklog();
     }
+
+    builder
+        .emplace<TimestampElement>(
+            time.time(),
+            MessageElementFlags{
+                MessageElementFlag::HeaderTimestamp,
+                MessageElementFlag::AnnouncementHeader,
+            })
+        ->exhaustiveFlags = true;
+    builder
+        .emplace<TextElement>("Broadcast",
+                              MessageElementFlags{
+                                  MessageElementFlag::Text,
+                                  MessageElementFlag::AnnouncementHeader,
+                              },
+                              MessageColor::System, FontStyle::ChatMediumBold)
+        ->exhaustiveFlags = true;
+    builder
+        .emplace<LinebreakElement>(MessageElementFlags{
+            MessageElementFlag::AnnouncementHeader,
+        })
+        ->exhaustiveFlags = true;
+    builder.emplace<TimestampElement>(time.time());
 
     const bool named = !user.isSystem() && !user.nick.isEmpty();
     QString prefix;
