@@ -1071,6 +1071,7 @@ Analysis analyseSelector(string_view selector)
             contains(c.classes, "msg-emote") ||
             (c.classes.empty() && !c.attrs.empty());
         const bool isUser = contains(c.classes, "user");
+        const bool isChatUser = contains(c.classes, "chat-user");
         const bool isText = c.classes.size() == 1 && c.classes[0] == "text";
 
         if (isMessage && !isUser && !isText && !isEmote && !isGreentext)
@@ -1118,6 +1119,15 @@ Analysis analyseSelector(string_view selector)
             {
                 out.dependsOnContext = true;
             }
+        }
+        else if (isChatUser && !isMessage && !isEmote && !isUser &&
+                 c.classes.size() == 1 && c.attrs.empty())
+        {
+            // a name in the text (`@nick`, or the nick of somebody in chat):
+            // chat-gui makes it a `<span class="chat-user">`, a sibling of
+            // the emotes (`.chat-user + .emote.NoTears`). Without this branch
+            // every such rule was dropped as "selector context".
+            out.dependsOnContext = true;
         }
         else if (isText && c.attrs.empty())
         {

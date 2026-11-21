@@ -801,9 +801,10 @@ TEST(DggEmoteCss, SlideInOfTheEmoteIsNotAShake)
 
 namespace {
 
-// NoTears as on the site (copied from emotes.css): it throws a banana, its
-// `::before`, unless it is alone, last after an emote, or a name (`.chat-user`)
-// sits right in front of it.
+// NoTears exactly as on the site (copied from emotes.css, lines 1801-1809 and
+// 6409-6544, including the mirrored rules): it throws a banana, its `::before`,
+// unless it is alone, last after an emote, or a name (`.chat-user`) sits right
+// in front of it.
 const char *const CHAT_USER_CSS = R"CSS(
 .emote.NoTears {
     background-image: url("5c2bbd3411c78.png");
@@ -902,6 +903,54 @@ const char *const CHAT_USER_CSS = R"CSS(
 .emote.NoTears:has(+ .emote.NoTears)::before {
   animation: none;
 }
+
+.emote.NoTears + .chat-user + .emote.NoTears,
+.emote.NoTears + .emote:not(.NoTears) + .emote.NoTears {
+  transform: scale(-1, 1);
+  margin-left: 12px;
+  margin-right: 0px;
+  animation: NoTears-z var(--t-NoTears) 1 -.15s, NoTears-size-flipped var(--t-NoTears) 3 -.15s;
+}
+
+.emote.NoTears + .chat-user + .emote.NoTears:hover,
+.emote.NoTears + .emote:not(.NoTears) + .emote.NoTears:hover {
+  margin-left: 0px;
+  animation: NoTears-z-hover var(--t-NoTears) 1, NoTears-size-flipped-hover var(--t-NoTears) 3;
+}
+
+.emote.NoTears + .chat-user + .emote.NoTears::before,
+.emote.NoTears + .emote:not(.NoTears) + .emote.NoTears::before {
+    content: "🍌";
+    text-indent: 0;
+    color: white;
+    font-size: 17px;
+    line-height: initial;
+    position: absolute;
+    opacity: 1;
+    top: -34px;
+    text-shadow: none;
+    width: 17px;
+    transform: scaleX(.4) rotate(90deg);
+    transform-origin: 55% 55%;
+    animation: NoTears-anim var(--t-NoTears) 3 ease -.15s;
+}
+
+.emote.NoTears + .chat-user + .emote.NoTears:hover::before,
+.emote.NoTears + .emote:not(.NoTears) + .emote.NoTears:hover::before {
+    animation: NoTears-anim-hover var(--t-NoTears) infinite ease;
+}
+
+@keyframes NoTears-size-flipped {
+  0%, 100% { 
+  width: 69px;
+  margin-left: -26px; }
+}
+
+@keyframes NoTears-size-flipped-hover {
+  0%, 100% {
+  width: 69px;
+  margin-left: -26px; }
+}
 )CSS";
 
 const DggEmoteCss &chatUserCss()
@@ -935,4 +984,114 @@ TEST(DggEmoteCss, ChatUserInFrontOfTheEmoteCountsAsAChatUser)
     ASSERT_TRUE(moving.valid);
     // the banana
     EXPECT_TRUE(moving.sprite.hasOverlays());
+}
+
+namespace {
+
+enum class NoTearsLook {
+    Still,    // 31 px, no banana
+    Wide,     // 69 px, throws the banana
+    Flipped,  // mirrored, throws the banana
+};
+
+/// `seq` is the elements of the text, in order (plain words are not
+/// elements): N NoTears, L another emote, C Clap, R RapThis, S Sippy,
+/// U a name (`.chat-user`), K a link.
+DggEmoteContext noTearsContext(const char *seq, int index)
+{
+    auto context = userContext("someone");
+    for (const char *c = seq; *c != 0; c++)
+    {
+        switch (*c)
+        {
+            case 'N':
+                context.elements.append(QStringLiteral("NoTears"));
+                break;
+            case 'L':
+                context.elements.append(QStringLiteral("LUL"));
+                break;
+            case 'C':
+                context.elements.append(QStringLiteral("Clap"));
+                break;
+            case 'R':
+                context.elements.append(QStringLiteral("RapThis"));
+                break;
+            case 'S':
+                context.elements.append(QStringLiteral("Sippy"));
+                break;
+            case 'U':
+                context.elements.append(DGG_CHAT_USER_ELEMENT);
+                break;
+            default:
+                context.elements.append(QString());
+                break;
+        }
+    }
+    context.elementIndex = index;
+    return context;
+}
+
+void expectNoTears(const char *seq, int index, NoTearsLook want)
+{
+    SCOPED_TRACE(std::string(seq) + " #" + std::to_string(index));
+    const auto style = chatUserCss().resolve(
+        QStringLiteral("NoTears"), noTearsContext(seq, index), QSize(31, 30));
+    ASSERT_TRUE(style.valid);
+    switch (want)
+    {
+        case NoTearsLook::Still:
+            EXPECT_FALSE(style.sprite.hasOverlays());
+            EXPECT_FALSE(style.animated());
+            break;
+        case NoTearsLook::Wide:
+            EXPECT_TRUE(style.sprite.hasOverlays());
+            EXPECT_FALSE(style.sprite.canvasMirror);
+            break;
+        case NoTearsLook::Flipped:
+            EXPECT_TRUE(style.sprite.hasOverlays());
+            EXPECT_TRUE(style.sprite.canvasMirror);
+            break;
+    }
+}
+
+}  // namespace
+
+// Every expectation below was produced by running the site's own selectors
+// (emotes.css) through a CSS engine on the DOM chat-gui builds, and the
+// selector matching of this file was checked against that engine over
+// 10 000 element sequences.
+TEST(DggEmoteCss, NoTearsFollowsTheSitesSelectors)
+{
+    using L = NoTearsLook;
+    // alone, or the only element (`words NoTears words`)
+    expectNoTears("N", 0, L::Still);
+    // last after any emote (`LUL NoTears`, `NoTears words NoTears`)
+    expectNoTears("LN", 1, L::Still);
+    expectNoTears("NN", 0, L::Still);
+    expectNoTears("NN", 1, L::Still);
+    expectNoTears("NNN", 1, L::Still);
+    // after a name, whatever follows
+    expectNoTears("UN", 1, L::Still);
+    expectNoTears("UNL", 1, L::Still);
+    // followed by Clap, RapThis or Sippy
+    expectNoTears("NC", 0, L::Still);
+    expectNoTears("NR", 0, L::Still);
+    expectNoTears("NS", 0, L::Still);
+    // followed by something else (a name after it doesn't matter)
+    expectNoTears("NL", 0, L::Wide);
+    expectNoTears("NU", 0, L::Wide);
+    expectNoTears("NK", 0, L::Wide);
+    expectNoTears("KN", 1, L::Wide);
+    expectNoTears("LNL", 1, L::Wide);
+    // `NoTears <other emote or name> NoTears`: the last one is mirrored
+    expectNoTears("NLN", 0, L::Wide);
+    expectNoTears("NLN", 2, L::Flipped);
+    expectNoTears("NUN", 2, L::Flipped);
+    expectNoTears("NLNN", 2, L::Flipped);
+    expectNoTears("NLNN", 3, L::Still);
+    // a link in between is neither an emote nor a name
+    expectNoTears("NKN", 2, L::Wide);
+    // two names in a row: the second is not right behind a NoTears
+    expectNoTears("NUUN", 3, L::Still);
+    expectNoTears("NLUN", 3, L::Still);
 }
