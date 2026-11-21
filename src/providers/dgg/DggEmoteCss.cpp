@@ -1420,7 +1420,13 @@ bool evalPseudo(const PseudoClass &pc, const Dom &dom, int nodeIndex)
 
     const Node &node = dom.nodes[static_cast<size_t>(nodeIndex)];
     const auto siblings = siblingsOf(dom, nodeIndex);
-    int position = 1;  // 1-based, among all siblings
+    // 1-based, among all siblings. (This used to be worked out from the
+    // address of the loop variable below, which is a copy of the element and
+    // not the element itself: the "position" was garbage, so `:last-child`,
+    // `:first-child` and `:nth-*` almost never matched. That is why the
+    // second NoTears of `NoTears words NoTears` kept throwing its banana,
+    // `.emote + .emote.NoTears:last-child` never matched it.)
+    const int position = node.parent < 0 ? 1 : node.pos + 1;
     int count = static_cast<int>(siblings.size());
     int typedPosition = 0;
     int typedCount = 0;
@@ -1434,7 +1440,6 @@ bool evalPseudo(const PseudoClass &pc, const Dom &dom, int nodeIndex)
         }
         if (sibling == nodeIndex)
         {
-            position = static_cast<int>(&sibling - siblings.data()) + 1;
             typedPosition = typedCount;
         }
     }

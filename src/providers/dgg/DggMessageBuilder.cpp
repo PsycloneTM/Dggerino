@@ -289,26 +289,61 @@ struct TextElements {
     std::vector<int> indexOfWord;
 };
 
-bool isMention(QStringView word)
+/// `\w` of chat-gui's regular expressions (they have no `u` flag): ASCII only.
+bool isSiteWordChar(QChar c)
 {
-    // chat-gui wraps `@nick` (3 to 20 word characters, optionally followed by
-    // punctuation) in a span
-    if (!word.startsWith(u'@'))
+    const char16_t u = c.unicode();
+    return (u >= u'0' && u <= u'9') || (u >= u'a' && u <= u'z') ||
+           (u >= u'A' && u <= u'Z') || u == u'_';
+}
+
+/// How many `<span class="chat-user">` chat-gui makes out of one word of the
+/// text (almost always 0 or 1). Emote rules look at these (`.chat-user +
+/// .emote.NoTears`), so this follows the site and not Chatterino's own idea
+/// of a clickable name:
+///
+/// - `@nick` (3 to 20 word characters) is one whether or not `nick` is in
+///   chat (`MentionedUserFormatter`'s first expression);
+/// - a bare word is one if it is the nick of somebody in chat, in any
+///   spelling (`chat.users.has(nick.toLowerCase())`);
+/// - both only at the start of the word or right behind a `>`, and only if
+///   the name ends the word or a `.`, `?`, `!`, `,` or `'` follows it.
+///   Anything else (`nick:`, `nick)`, `nick-nick`) is plain text.
+int countChatUserSpans(QStringView word, const DggChannel *channel)
+{
+    int spans = 0;
+    const qsizetype size = word.size();
+    qsizetype i = 0;
+    while (i < size)
     {
-        return false;
+        if (i != 0 && word[i - 1] != u'>')
+        {
+            i++;
+            continue;
+        }
+
+        const bool at = word[i] == u'@';
+        const qsizetype start = at ? i + 1 : i;
+        qsizetype end = start;
+        while (end < size && isSiteWordChar(word[end]))
+        {
+            end++;
+        }
+        const qsizetype length = end - start;
+        const bool endsName =
+            end == size || QStringView(u".?!,'").contains(word[end]);
+
+        if (length >= 3 && length <= 20 && endsName &&
+            (at || (channel != nullptr &&
+                    channel->canonicalNick(word.mid(start, length)))))
+        {
+            spans++;
+            i = end;
+            continue;
+        }
+        i++;
     }
-    auto name = word.sliced(1);
-    while (!name.isEmpty() && QStringView(u".?!,'").contains(name.back()))
-    {
-        name.chop(1);
-    }
-    if (name.size() < 3 || name.size() > 20)
-    {
-        return false;
-    }
-    return std::all_of(name.begin(), name.end(), [](QChar c) {
-        return c.isLetterOrNumber() || c == u'_';
-    });
+    return spans;
 }
 
 TextElements collectElements(const QStringList &words, const DggUser &user,
@@ -328,13 +363,16 @@ TextElements collectElements(const QStringList &words, const DggUser &user,
             out.indexOfWord.push_back(static_cast<int>(out.names.size()));
             out.names.append(QString());
         }
-        else if (isMention(word) || asNickWord(word, channel))
+        else if (const int spans = countChatUserSpans(word, channel); spans > 0)
         {
-            // `@nick` and the bare nick of somebody in chat are a
+            // `@nick` and the nick of somebody in chat are a
             // `<span class="chat-user">` on the site, which emote rules look
             // at (NoTears doesn't throw its banana next to one)
             out.indexOfWord.push_back(static_cast<int>(out.names.size()));
-            out.names.append(DGG_CHAT_USER_ELEMENT);
+            for (int k = 0; k < spans; k++)
+            {
+                out.names.append(DGG_CHAT_USER_ELEMENT);
+            }
         }
         else
         {
