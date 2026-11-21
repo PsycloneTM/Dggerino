@@ -852,11 +852,40 @@ MessagePtrMut DggMessageBuilder::makeChatMessage(DggChannel *channel,
     nickElement->setLink(Link(Link::UserInfo, msg.user.nick));
     if (msg.isWhisper)
     {
-        builder.emplace<TextElement>(
-            msg.whisperTarget.isEmpty()
-                ? QStringLiteral("whispers:")
-                : QStringLiteral("whispered to %1:").arg(msg.whisperTarget),
-            MessageElementFlag::Text, MessageColor::System);
+        // Like Twitch whispers in Chatterino: `sender -> receiver:`, the
+        // sender first (a received one is `nick -> you:`, one you sent is
+        // `you -> target:`).
+        builder.emplace<TextElement>(u"->"_s, MessageElementFlag::Username,
+                                     MessageColor::System,
+                                     FontStyle::ChatMedium);
+
+        const bool received = msg.whisperTarget.isEmpty();
+        QString otherNick;
+        if (received)
+        {
+            const auto account = getApp()->getAccounts()->dgg.current();
+            otherNick = account->isAnonymous() ? QString{}
+                                               : account->username();
+        }
+        else
+        {
+            otherNick = msg.whisperTarget;
+        }
+
+        // the other one's name in their flair colour if it is known
+        MessageColor otherColor = MessageColor::System;
+        if (const auto other = channel->findUser(otherNick))
+        {
+            if (const auto color = assets.nickStyleFor(*other).color)
+            {
+                otherColor = MessageColor(*color);
+            }
+        }
+        builder
+            .emplace<TextElement>(displayedNick(otherNick) + u':',
+                                  MessageElementFlag::Username, otherColor,
+                                  FontStyle::ChatMediumBold)
+            ->setLink(Link(Link::UserInfo, otherNick));
     }
 
     // Emotes look different depending on who says them and on what sits next
@@ -890,7 +919,10 @@ MessagePtrMut DggMessageBuilder::makeChatMessage(DggChannel *channel,
     builder->searchText = builder->loginName + QChar(u' ') + nick +
                           QStringLiteral(": ") + messageText;
 
-    if (!msg.isWhisper)
+    // A whisper you sent is not checked; one you received runs the whisper
+    // highlight (and the others, like Twitch does)
+    const bool receivedWhisper = msg.isWhisper && msg.whisperTarget.isEmpty();
+    if (!msg.isWhisper || receivedWhisper)
     {
         // Your own lines never highlight (they come back from the server
         // like everyone else's)
@@ -900,8 +932,9 @@ MessagePtrMut DggMessageBuilder::makeChatMessage(DggChannel *channel,
             msg.user.nick.compare(account->username(), Qt::CaseInsensitive) ==
                 0;
 
-        const auto result =
-            processHighlights(builder, MessageParseArgs{}, self);
+        MessageParseArgs args;
+        args.isReceivedWhisper = receivedWhisper;
+        const auto result = processHighlights(builder, args, self);
         if (alert != nullptr && !backlog)
         {
             // History is coloured but must not beep

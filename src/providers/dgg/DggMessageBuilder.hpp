@@ -73,9 +73,10 @@ public:
     /// have no colon after the nick.
     ///
     /// The user's highlights run over the line (your own name, highlight
-    /// phrases, ...), so it can get the highlight colour. Whispers are not
-    /// checked. `alert`, if given, receives the sound and window alert the
-    /// highlight asks for; it is left empty for backlog lines and for your own
+    /// phrases, ...), so it can get the highlight colour. A whisper you
+    /// received runs the whisper highlight too; one you sent is not checked.
+    /// `alert`, if given, receives the sound and window alert the highlight
+    /// asks for; it is left empty for backlog lines and for your own
     /// lines. Nothing is triggered here.
     static MessagePtrMut makeChatMessage(DggChannel *channel,
                                          const DggChatMessage &msg,

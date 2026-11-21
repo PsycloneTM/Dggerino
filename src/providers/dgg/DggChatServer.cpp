@@ -1175,9 +1175,11 @@ void DggChatServer::handleFrame(const DggFrame &frame)
         }
         chan->noteUser(msg->user);
         this->endCombo(*chan);
-        chan->addMessage(DggMessageBuilder::makeChatMessage(
-                             chan.get(), *msg, frame.backlog, *this->assets_),
-                         MessageContext::Original);
+        HighlightAlert alert;
+        const MessagePtr line = DggMessageBuilder::makeChatMessage(
+            chan.get(), *msg, frame.backlog, *this->assets_, &alert);
+        MessageBuilder::triggerHighlights(chan.get(), alert);
+        chan->addMessage(line, MessageContext::Original);
     }
     else if (name == "PRIVMSGSENT"_L1)
     {
