@@ -42,8 +42,8 @@ protected:
 private:
     void paintEvent(QPaintEvent *event) override;
 
-    /// Redraws the banner from the channel's poll, at most every 100 ms
-    /// however many votes come in.
+    /// Redraws the banner from the channel's poll: at once, then at most every
+    /// 100 ms however many votes come in.
     void scheduleRefresh();
     void refresh();
 
@@ -54,6 +54,13 @@ private:
 
     /// Updates the vote count, countdown and timer bar.
     void tick();
+
+    /// Starts and stops `tickTimer_` and `barTimer_` together.
+    void startTicking();
+    void stopTicking();
+
+    /// Redraws the strip of the countdown bar.
+    void updateCountdownBar();
 
     /// How much of the poll's time is left, 0 to 1.
     double remainingFraction() const;
@@ -72,6 +79,11 @@ private:
     QTimer *refreshTimer_ = nullptr;
     QTimer *tickTimer_ = nullptr;
     QTimer *endTimer_ = nullptr;
+    /// Redraws the countdown bar about 30 times a second while a poll runs.
+    QTimer *barTimer_ = nullptr;
+
+    /// Votes came in while `refreshTimer_` was running.
+    bool refreshPending_ = false;
 
     /// The poll that is shown
     std::optional<DggPoll> poll_;

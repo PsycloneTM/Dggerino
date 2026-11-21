@@ -18,6 +18,7 @@
 #include <QTextLayout>
 #include <QTextOption>
 #include <QTimer>
+#include <QVariantAnimation>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -37,6 +38,9 @@ constexpr auto MUTED_STYLE = "color: #adadb8;";
 
 /// How long an ended poll stays on screen (chat-gui's `POLL_END_TIME`).
 constexpr auto END_VISIBLE = 7s;
+
+/// How long a bar takes to slide to its new width.
+constexpr int BAR_SLIDE_MS = 220;
 
 /// All the votes: what the shares are a share of.
 qint64 allVotes(const DggPoll &poll)
@@ -84,7 +88,17 @@ class PollOptionsView final : public QWidget
 public:
     explicit PollOptionsView(QWidget *parent)
         : QWidget(parent)
+        , animation_(new QVariantAnimation(this))
     {
+        // The bars slide to their new width instead of jumping
+        this->animation_->setStartValue(0.0);
+        this->animation_->setEndValue(1.0);
+        this->animation_->setDuration(BAR_SLIDE_MS);
+        this->animation_->setEasingCurve(QEasingCurve::OutCubic);
+        QObject::connect(this->animation_, &QVariantAnimation::valueChanged,
+                         this, [this] {
+                             this->update();
+                         });
     }
 
     /// Called when the rows got taller or shorter because the width changed
@@ -97,6 +111,12 @@ public:
     void setPoll(const DggPoll &poll, const QColor &text, const QColor &accent,
                  float scale)
     {
+        // Where the bars are right now (halfway through a slide, say)
+        const auto before = this->shownFractions();
+        const bool samePoll = !this->poll_.id.isEmpty() &&
+                              this->poll_.id == poll.id &&
+                              this->poll_.options.size() == poll.options.size();
+
         this->poll_ = poll;
         this->text_ = text;
         this->accent_ = accent;
@@ -105,6 +125,25 @@ public:
         this->setCursor(poll.ended || !poll.canVote ? Qt::ArrowCursor
                                                     : Qt::PointingHandCursor);
         this->relayout();
+
+        // Slide the bars from where they are to the new shares. A poll that
+        // just appeared, or another one, starts at its shares.
+        this->animation_->stop();
+        this->to_ = barFractions(poll);
+        this->from_ = this->to_;
+        if (samePoll && before.size() == this->to_.size())
+        {
+            bool moves = false;
+            for (size_t i = 0; i < before.size(); i++)
+            {
+                moves = moves || std::abs(before[i] - this->to_[i]) > 0.0005;
+            }
+            if (moves)
+            {
+                this->from_ = before;
+                this->animation_->start();
+            }
+        }
         this->update();
     }
 
@@ -167,7 +206,7 @@ protected:
 
         const int gap = std::max(1, static_cast<int>(2 * this->scale_));
         const int pad = this->textPadding();
-        const qint64 all = allVotes(this->poll_);
+        const auto shown = this->shownFractions();
 
         qint64 best = 0;
         for (const auto total : this->poll_.totals)
@@ -203,13 +242,12 @@ protected:
                 painter.setBrush(fill);
                 painter.drawRoundedRect(box, 3, 3);
             }
-            else if (all > 0 && votes > 0)
+            else if (index < shown.size() && shown[index] > 0.0)
             {
                 auto bar = box;
                 bar.setWidth(std::max(
                     1, static_cast<int>(static_cast<double>(box.width()) *
-                                        static_cast<double>(votes) /
-                                        static_cast<double>(all))));
+                                        shown[index])));
                 painter.setBrush(fill);
                 painter.drawRoundedRect(bar, 3, 3);
             }
@@ -243,6 +281,42 @@ private:
         QString share;
         std::unique_ptr<QTextLayout> layout;
     };
+
+    /// How wide each bar is, 0 to 1: the share of the votes. A hidden poll
+    /// draws its bars faintly full instead, so they are 0 here.
+    static std::vector<double> barFractions(const DggPoll &poll)
+    {
+        std::vector<double> out(static_cast<size_t>(poll.options.size()), 0.0);
+        const qint64 all = allVotes(poll);
+        if (poll.hidden || all <= 0)
+        {
+            return out;
+        }
+        for (size_t i = 0; i < out.size() && i < poll.totals.size(); i++)
+        {
+            if (poll.totals[i] > 0)
+            {
+                out[i] = static_cast<double>(poll.totals[i]) /
+                         static_cast<double>(all);
+            }
+        }
+        return out;
+    }
+
+    /// The bars as they are drawn now: on their way from `from_` to `to_`.
+    std::vector<double> shownFractions() const
+    {
+        const double t =
+            this->animation_->state() == QAbstractAnimation::Running
+                ? this->animation_->currentValue().toDouble()
+                : 1.0;
+        std::vector<double> out = this->to_;
+        for (size_t i = 0; i < out.size() && i < this->from_.size(); i++)
+        {
+            out[i] = this->from_[i] + (this->to_[i] - this->from_[i]) * t;
+        }
+        return out;
+    }
 
     int rowPadding() const
     {
@@ -318,6 +392,11 @@ private:
     float scale_ = 1.0F;
     std::vector<Row> rows_;
     int contentHeight_ = 0;
+
+    /// Slides the bars from `from_` to `to_`
+    QVariantAnimation *animation_ = nullptr;
+    std::vector<double> from_;
+    std::vector<double> to_;
 };
 
 QString pollTitle(const DggPoll &poll)
@@ -352,6 +431,7 @@ DggPollBanner::DggPollBanner(QWidget *parent)
     , refreshTimer_(new QTimer(this))
     , tickTimer_(new QTimer(this))
     , endTimer_(new QTimer(this))
+    , barTimer_(new QTimer(this))
 {
     this->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
 
@@ -410,12 +490,25 @@ DggPollBanner::DggPollBanner(QWidget *parent)
     this->refreshTimer_->setSingleShot(true);
     this->refreshTimer_->setInterval(100ms);
     QObject::connect(this->refreshTimer_, &QTimer::timeout, this, [this] {
-        this->refresh();
+        // Votes came in while it waited: show them now
+        if (this->refreshPending_)
+        {
+            this->refreshPending_ = false;
+            this->refresh();
+            this->refreshTimer_->start();
+        }
     });
 
     this->tickTimer_->setInterval(250ms);
     QObject::connect(this->tickTimer_, &QTimer::timeout, this, [this] {
         this->tick();
+    });
+
+    // The countdown bar is redrawn far more often than the text beside it, so
+    // that it runs out smoothly instead of in steps
+    this->barTimer_->setInterval(33ms);
+    QObject::connect(this->barTimer_, &QTimer::timeout, this, [this] {
+        this->updateCountdownBar();
     });
 
     this->endTimer_->setSingleShot(true);
@@ -429,7 +522,7 @@ DggPollBanner::DggPollBanner(QWidget *parent)
 
     QObject::connect(this->closeButton_, &Button::leftClicked, this, [this] {
         this->closed_ = true;
-        this->tickTimer_->stop();
+        this->stopTicking();
         this->endTimer_->stop();
         this->hide();
     });
@@ -449,7 +542,9 @@ void DggPollBanner::setChannel(const std::shared_ptr<DggChannel> &channel)
     this->endShown_ = false;
     this->endHidden_ = false;
     this->poll_.reset();
-    this->tickTimer_->stop();
+    this->refreshPending_ = false;
+    this->refreshTimer_->stop();
+    this->stopTicking();
     this->endTimer_->stop();
 
     if (channel)
@@ -464,10 +559,41 @@ void DggPollBanner::setChannel(const std::shared_ptr<DggChannel> &channel)
 
 void DggPollBanner::scheduleRefresh()
 {
-    if (!this->refreshTimer_->isActive())
+    if (this->refreshTimer_->isActive())
     {
-        this->refreshTimer_->start();
+        // Just redrawn: the votes since then are shown when the timer ends
+        this->refreshPending_ = true;
+        return;
     }
+
+    // The first vote is shown at once, not after the wait
+    this->refresh();
+    this->refreshTimer_->start();
+}
+
+void DggPollBanner::startTicking()
+{
+    if (!this->tickTimer_->isActive())
+    {
+        this->tickTimer_->start();
+    }
+    if (!this->barTimer_->isActive())
+    {
+        this->barTimer_->start();
+    }
+}
+
+void DggPollBanner::stopTicking()
+{
+    this->tickTimer_->stop();
+    this->barTimer_->stop();
+}
+
+void DggPollBanner::updateCountdownBar()
+{
+    // Only the strip of the bar, not the whole banner
+    const int barHeight = std::max(2, static_cast<int>(3 * this->scale()));
+    this->update(0, this->height() - 1 - barHeight, this->width(), barHeight);
 }
 
 void DggPollBanner::refresh()
@@ -476,7 +602,7 @@ void DggPollBanner::refresh()
     if (!channel || !channel->poll())
     {
         this->poll_.reset();
-        this->tickTimer_->stop();
+        this->stopTicking();
         this->endTimer_->stop();
         this->hide();
         return;
@@ -502,7 +628,7 @@ void DggPollBanner::refresh()
     }
     if (this->closed_ || !this->sawRunning_ || this->endHidden_)
     {
-        this->tickTimer_->stop();
+        this->stopTicking();
         this->hide();
         return;
     }
@@ -520,16 +646,16 @@ void DggPollBanner::refresh()
 
     if (poll.ended)
     {
-        this->tickTimer_->stop();
+        this->stopTicking();
         if (!this->endShown_)
         {
             this->endShown_ = true;
             this->endTimer_->start();
         }
     }
-    else if (!this->tickTimer_->isActive())
+    else
     {
-        this->tickTimer_->start();
+        this->startTicking();
     }
 
     this->show();
