@@ -303,12 +303,24 @@ jobs:
         run: |
           mkdir build
           cd build
-          conan install .. \
-              -s build_type=RelWithDebInfo \
-              -c tools.cmake.cmaketoolchain:generator="Ninja" \
-              -b missing \
-              --output-folder=. \
-              -o with_openssl3=True
+          # Source tarballs (e.g. libjpeg from ijg.org) are sometimes unreachable,
+          # so fall back to conancenter's backup mirror and retry a few times.
+          for attempt in 1 2 3; do
+            if conan install .. \
+                -s build_type=RelWithDebInfo \
+                -c tools.cmake.cmaketoolchain:generator="Ninja" \
+                -c 'core.sources:download_urls=["origin", "https://c3i.jfrog.io/artifactory/conan-center-backup-sources/"]' \
+                -c core.download:retry=5 \
+                -c core.download:retry_wait=10 \
+                -b missing \
+                --output-folder=. \
+                -o with_openssl3=True; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then exit 1; fi
+            echo "conan install failed (attempt $attempt), retrying in 30s"
+            sleep 30
+          done
           conan cache clean --source --build --download "*"
         shell: bash
 
