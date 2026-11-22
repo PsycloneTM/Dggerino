@@ -32,6 +32,33 @@ const QString &DggChannel::getDisplayName() const
     return this->getName();
 }
 
+bool DggChannel::isLive() const
+{
+    return this->streamInfo_.isLive;
+}
+
+const DggStreamInfo &DggChannel::streamInfo() const
+{
+    return this->streamInfo_;
+}
+
+void DggChannel::setStreamInfo(DggStreamInfo info)
+{
+    if (info == this->streamInfo_)
+    {
+        return;
+    }
+
+    const bool liveChanged = info.isLive != this->streamInfo_.isLive;
+    this->streamInfo_ = std::move(info);
+
+    this->streamDataChanged.invoke();
+    if (liveChanged)
+    {
+        this->liveStatusChanged.invoke();
+    }
+}
+
 bool DggChannel::canSendMessage() const
 {
     return getApp()->getAccounts()->dgg.isLoggedIn();

@@ -19,6 +19,8 @@
 #include <memory>
 #include <vector>
 
+class QTimer;
+
 namespace chatterino {
 
 class Channel;
@@ -103,6 +105,17 @@ public:
 private:
     void ensureConnected(const std::shared_ptr<DggChannel> &chan);
 
+    /// Asks the site whether the broadcast is live now and then every
+    /// STREAM_POLL_INTERVAL, for as long as the channel exists. The answer
+    /// goes to DggChannel::setStreamInfo(), which lights up the tab.
+    void startStreamPolling();
+    void stopStreamPolling();
+    void fetchStreamInfo();
+
+    /// How often the site is asked whether the broadcast is live.
+    static constexpr std::chrono::milliseconds STREAM_POLL_INTERVAL{60'000};
+    static constexpr int STREAM_FETCH_TIMEOUT_MS = 10'000;
+
     void onSocketOpened();
     void onSocketClosed(std::chrono::milliseconds retryIn);
     /// `ME`: tells who the server thinks we are (a guest has no user).
@@ -172,6 +185,9 @@ private:
     bool accountSignalConnected_ = false;
     /// A `/mentions` request is running (chat-gui's `busymentions`).
     bool mentionsBusy_ = false;
+    /// A request for the stream info is running.
+    bool streamFetchBusy_ = false;
+    std::unique_ptr<QTimer> streamTimer_;
     std::unique_ptr<DggWebSocket> socket_;
     pajlada::Signals::SignalHolder signalHolder_;
 };

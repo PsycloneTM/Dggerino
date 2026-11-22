@@ -1277,6 +1277,13 @@ void ChannelView::setChannel(const ChannelPtr &underlyingChannel)
                     this->liveStatusChanged.invoke();
                 });
         }
+        else if (auto *dggChannel = dynamic_cast<DggChannel *>(chan))
+        {
+            this->channelConnections_.managedConnect(
+                dggChannel->liveStatusChanged, [this] {
+                    this->liveStatusChanged.invoke();
+                });
+        }
     };
 
     if (mc)

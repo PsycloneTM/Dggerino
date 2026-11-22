@@ -2,6 +2,7 @@
 
 #include "common/Channel.hpp"
 #include "providers/dgg/DggMessage.hpp"
+#include "providers/dgg/DggStream.hpp"
 
 #include <pajlada/signals/signal.hpp>
 #include <QHash>
@@ -17,9 +18,10 @@ namespace chatterino {
 
 /// The single destiny.gg chat room.
 ///
-/// DGG only has one room, so unlike KickChannel there's no per-channel lookup
-/// or live status. Sending needs a destiny.gg account (a login key); without
-/// one the channel can be read but not written to.
+/// DGG only has one room, so unlike KickChannel there's no per-channel lookup.
+/// Whether the broadcast is live is polled from the site by the chat server
+/// (setStreamInfo()). Sending needs a destiny.gg account (a login key);
+/// without one the channel can be read but not written to.
 class DggChannel : public Channel
 {
 public:
@@ -34,6 +36,24 @@ public:
     pajlada::Signals::NoArgSignal aboutToClose;
 
     const QString &getDisplayName() const override;
+
+    /// Whether the broadcast is live on any platform. Drives the live dot on
+    /// the tab. False until the site was asked.
+    bool isLive() const override;
+
+    /// What the site last said about the broadcast.
+    const DggStreamInfo &streamInfo() const;
+
+    /// Stores the latest answer of the site. Fires streamDataChanged() if
+    /// anything differs, and liveStatusChanged() if live turned on or off.
+    /// GUI thread only.
+    void setStreamInfo(DggStreamInfo info);
+
+    /// Fired after the stream info changed in any way (viewers, title, ...).
+    pajlada::Signals::NoArgSignal streamDataChanged;
+
+    /// Fired after the broadcast went live or offline.
+    pajlada::Signals::NoArgSignal liveStatusChanged;
 
     bool canSendMessage() const override;
     bool isWritable() const override;
@@ -155,6 +175,8 @@ private:
 
     std::optional<DggPin> pin_;
     std::optional<DggPoll> poll_;
+
+    DggStreamInfo streamInfo_;
 };
 
 }  // namespace chatterino

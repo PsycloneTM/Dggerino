@@ -292,6 +292,18 @@ TwitchChannel::StreamStatus toTwitchStreamStatus(
     };
 }
 
+TwitchChannel::StreamStatus toTwitchStreamStatus(const DggStreamInfo &info)
+{
+    return {
+        .live = info.isLive,
+        .viewerCount = static_cast<unsigned>(info.viewers),
+        .title = info.title,
+        .game = info.game,
+        .uptime = info.uptime(),
+        .streamType = QStringLiteral("live"),
+    };
+}
+
 auto distance(QPoint a, QPoint b)
 {
     auto x = std::abs(a.x() - b.x());
@@ -1002,6 +1014,11 @@ void SplitHeader::handleChannelChanged()
     else if (auto *dggChannel = dynamic_cast<DggChannel *>(channel.get()))
     {
         this->channelConnections_.managedConnect(
+            dggChannel->streamDataChanged, [this]() {
+                this->updateChannelText();
+            });
+
+        this->channelConnections_.managedConnect(
             dggChannel->pinnedMessageChanged, [this]() {
                 this->updatePinButton();
             });
@@ -1152,6 +1169,40 @@ void SplitHeader::updateChannelText()
                  dynamic_cast<KickChannel *>(selectedChannel.get()))
     {
         const auto &stream = kickChannel->streamData();
+        auto twitch = toTwitchStreamStatus(stream);
+        if (stream.isLive)
+        {
+            this->isLive_ = true;
+            if (!stream.thumbnailUrl.isEmpty() &&
+                (!this->lastThumbnail_.isValid() ||
+                 this->lastThumbnail_.elapsed() > THUMBNAIL_MAX_AGE_MS))
+            {
+                NetworkRequest(stream.thumbnailUrl, NetworkRequestType::Get)
+                    .caller(this)
+                    .followRedirects(true)
+                    .onSuccess([this](const auto &result) {
+                        assert(!isAppAboutToQuit());
+
+                        this->thumbnail_ =
+                            QString::fromLatin1(result.getData().toBase64());
+                        this->updateChannelText();
+                    })
+                    .execute();
+                this->lastThumbnail_.restart();
+            }
+            this->tooltipText_ = formatTooltip(twitch, this->thumbnail_, true);
+            title += formatTitle(twitch, *getSettings(), {});
+        }
+        else
+        {
+            this->tooltipText_ = formatOfflineTooltip(twitch);
+        }
+    }
+
+    else if (auto *dggChannel =
+                 dynamic_cast<DggChannel *>(selectedChannel.get()))
+    {
+        const auto &stream = dggChannel->streamInfo();
         auto twitch = toTwitchStreamStatus(stream);
         if (stream.isLive)
         {

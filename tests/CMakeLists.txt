@@ -19,6 +19,7 @@ set(test_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/DggManifest.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/DggMentions.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/DggMessage.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/DggStream.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/Emojis.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/ExponentialBackoff.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/Helpers.cpp

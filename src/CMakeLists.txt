@@ -486,6 +486,8 @@ set(SOURCE_FILES
         providers/dgg/DggManifest.cpp
         providers/dgg/DggManifest.hpp
         providers/dgg/DggMessage.cpp
+        providers/dgg/DggStream.cpp
+        providers/dgg/DggStream.hpp
         providers/dgg/DggRainbowPaint.cpp
         providers/dgg/DggRainbowPaint.hpp
         providers/dgg/DggMentions.cpp

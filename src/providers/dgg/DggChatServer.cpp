@@ -15,6 +15,7 @@
 #include "providers/dgg/DggMentions.hpp"
 #include "providers/dgg/DggMessage.hpp"
 #include "providers/dgg/DggMessageBuilder.hpp"
+#include "providers/dgg/DggStream.hpp"
 #include "providers/dgg/DggWebSocket.hpp"
 #include "singletons/Settings.hpp"
 
@@ -312,7 +313,10 @@ std::shared_ptr<Channel> DggChatServer::getOrCreate()
             {
                 this->socket_->stop();
             }
+            this->stopStreamPolling();
         });
+
+        this->startStreamPolling();
     }
 
     this->ensureConnected(chan);
@@ -322,6 +326,69 @@ std::shared_ptr<Channel> DggChatServer::getOrCreate()
 std::shared_ptr<DggChannel> DggChatServer::channel() const
 {
     return this->channel_.lock();
+}
+
+void DggChatServer::startStreamPolling()
+{
+    if (!this->streamTimer_)
+    {
+        this->streamTimer_ = std::make_unique<QTimer>();
+        this->streamTimer_->setInterval(STREAM_POLL_INTERVAL);
+        QObject::connect(this->streamTimer_.get(), &QTimer::timeout, this,
+                         [this] {
+                             this->fetchStreamInfo();
+                         });
+    }
+
+    this->streamTimer_->start();
+    // no need to wait a whole interval to learn whether it is live
+    this->fetchStreamInfo();
+}
+
+void DggChatServer::stopStreamPolling()
+{
+    if (this->streamTimer_)
+    {
+        this->streamTimer_->stop();
+    }
+}
+
+void DggChatServer::fetchStreamInfo()
+{
+    auto chan = this->channel_.lock();
+    if (!chan)
+    {
+        // nothing shows DGG anymore
+        this->stopStreamPolling();
+        return;
+    }
+    if (this->streamFetchBusy_)
+    {
+        return;
+    }
+    this->streamFetchBusy_ = true;
+
+    NetworkRequest(dggStreamInfoUrl())
+        .caller(this)
+        .timeout(STREAM_FETCH_TIMEOUT_MS)
+        .onSuccess([this, weak = std::weak_ptr<DggChannel>(chan)](
+                       const NetworkResult &result) {
+            auto chan = weak.lock();
+            if (!chan)
+            {
+                return;
+            }
+            // A bad answer is ignored rather than shown as "offline", so a
+            // hiccup of the site doesn't flicker the tab.
+            if (auto info = parseDggStreamInfo(result.parseJson()))
+            {
+                chan->setStreamInfo(std::move(*info));
+            }
+        })
+        .finally([this] {
+            this->streamFetchBusy_ = false;
+        })
+        .execute();
 }
 
 void DggChatServer::ensureConnected(const std::shared_ptr<DggChannel> &chan)
