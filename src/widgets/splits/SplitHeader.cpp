@@ -41,7 +41,9 @@
 #include "widgets/TooltipWidget.hpp"
 #include "widgets/Window.hpp"
 
+#include <QBuffer>
 #include <QDrag>
+#include <QImage>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QMenu>
@@ -147,6 +149,45 @@ void cleanRoomModeText(QString &text, bool hasModRights)
     {
         text = "none";
     }
+}
+
+/// Crops a stream thumbnail to 16:9, centered, like the website's
+/// `aspect-ratio: 16/9; object-fit: cover`. YouTube's `hqdefault.jpg` is a
+/// 4:3 image with black bars baked in, and this crops them off.
+/// Returns the image as base64 JPEG. Falls back to the unmodified data if
+/// the image can't be decoded.
+QString cropThumbnailToWide(const QByteArray &data)
+{
+    QImage img;
+    if (!img.loadFromData(data) || img.isNull())
+    {
+        return QString::fromLatin1(data.toBase64());
+    }
+
+    const int wideHeight = img.width() * 9 / 16;
+    if (wideHeight > 0 && wideHeight < img.height())
+    {
+        img = img.copy(0, (img.height() - wideHeight) / 2, img.width(),
+                       wideHeight);
+    }
+    else
+    {
+        const int wideWidth = img.height() * 16 / 9;
+        if (wideWidth > 0 && wideWidth < img.width())
+        {
+            img = img.copy((img.width() - wideWidth) / 2, 0, wideWidth,
+                           img.height());
+        }
+    }
+
+    QByteArray out;
+    QBuffer buffer(&out);
+    buffer.open(QIODevice::WriteOnly);
+    if (!img.save(&buffer, "JPG", 90))
+    {
+        return QString::fromLatin1(data.toBase64());
+    }
+    return QString::fromLatin1(out.toBase64());
 }
 
 auto formatTooltip(const TwitchChannel::StreamStatus &s, QString thumbnail,
@@ -1218,7 +1259,7 @@ void SplitHeader::updateChannelText()
                         assert(!isAppAboutToQuit());
 
                         this->thumbnail_ =
-                            QString::fromLatin1(result.getData().toBase64());
+                            cropThumbnailToWide(result.getData());
                         this->updateChannelText();
                     })
                     .execute();
