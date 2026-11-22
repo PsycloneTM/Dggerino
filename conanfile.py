@@ -26,11 +26,9 @@ class Chatterino(ConanFile):
 
         if self.settings.os == "Windows":
             self.requires("libavif/1.4.1")
-            # dav1d <= 1.5.4 doesn't compile with MSVC 14.52 (Visual Studio
-            # 2026, the windows-latest image): error C7780 on
-            # include/compat/msvc/stdatomic.h. Fixed in dav1d 1.5.5.
-            # Remove once libavif requires a dav1d that includes the fix.
-            self.requires("dav1d/1.5.5", override=True)
+            # libavif asks for dav1d/[>=1.4 <2], which resolves to 1.5.5, but
+            # that version can't be downloaded from conancenter. Pin one that can.
+            self.requires("dav1d/1.5.1", override=True)
         if self.options.get_safe("with_benchmark", False):
             self.requires("benchmark/1.9.0")
 
