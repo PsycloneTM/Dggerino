@@ -305,13 +305,16 @@ jobs:
           cd build
           # Source tarballs (e.g. libjpeg from ijg.org) are sometimes unreachable,
           # so fall back to conancenter's backup mirror and retry a few times.
+          # (core.* settings are only allowed in global.conf, not via -c)
+          cat >> "$(conan config home)/global.conf" <<'EOF'
+          core.sources:download_urls = ["origin", "https://c3i.jfrog.io/artifactory/conan-center-backup-sources/"]
+          core.download:retry = 5
+          core.download:retry_wait = 10
+          EOF
           for attempt in 1 2 3; do
             if conan install .. \
                 -s build_type=RelWithDebInfo \
                 -c tools.cmake.cmaketoolchain:generator="Ninja" \
-                -c 'core.sources:download_urls=["origin", "https://c3i.jfrog.io/artifactory/conan-center-backup-sources/"]' \
-                -c core.download:retry=5 \
-                -c core.download:retry_wait=10 \
                 -b missing \
                 --output-folder=. \
                 -o with_openssl3=True; then
