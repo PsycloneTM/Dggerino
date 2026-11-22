@@ -306,6 +306,8 @@ jobs:
           # Source tarballs (e.g. libjpeg from ijg.org) are sometimes unreachable,
           # so fall back to conancenter's backup mirror and retry a few times.
           # (core.* settings are only allowed in global.conf, not via -c)
+          # dav1d's MSVC compat header uses __has_include_next, which cl 19.52
+          # rejects (C7780), so build dav1d with clang-cl instead.
           cat >> "$(conan config home)/global.conf" <<'EOF'
           core.sources:download_urls = ["origin", "https://c3i.jfrog.io/artifactory/conan-center-backup-sources/"]
           core.download:retry = 5
@@ -315,6 +317,7 @@ jobs:
             if conan install .. \
                 -s build_type=RelWithDebInfo \
                 -c tools.cmake.cmaketoolchain:generator="Ninja" \
+                -c 'dav1d/*:tools.build:compiler_executables={"c": "clang-cl", "cpp": "clang-cl"}' \
                 -b missing \
                 --output-folder=. \
                 -o with_openssl3=True; then
