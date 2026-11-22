@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <numeric>
 #include <optional>
 #include <string_view>
 #include <variant>
@@ -2469,14 +2470,215 @@ std::optional<std::vector<anim::AnimationSpec>> parseAnimationsOf(
     return specs;
 }
 
+/// The longest stretch that is laid out when a sprite animation and a baked
+/// one are combined (the same as the limit of the baking itself).
+constexpr long long MAX_COMBINED_MS = 10000;
+
+/// Frames shorter than this are dropped by the animation clock (see
+/// sliceSpriteSheet()), so moments that close together are one.
+constexpr long long MIN_COMBINED_FRAME_MS = 20;
+
+/// An emote can step through the frames of its sheet and have its
+/// `transform` animated at the same time, each on its own clock: BONK hits
+/// with `BONK-anim` (`background-position`, see computeStyle()) while
+/// `YUMP-anim` shakes it. The frames of the sheet and the baked poses are
+/// laid on one timeline that is cut at every moment either of them changes,
+/// and every piece of it shows the frame and the pose of that moment.
+///
+/// Only for two animations that both end or both go on forever (the latter
+/// for as long as it takes until they line up again): a stretch that plays
+/// once and is followed by one that repeats can't be written as a list of
+/// frames that is played in a loop.
+///
+/// Leaves `style` alone (adding a note) if the two can't be combined.
+bool combineWithSprite(DggEmoteStyle &style, const anim::Baked &baked,
+                       const anim::Box &box, std::vector<string> &notes)
+{
+    auto &sprite = style.sprite;
+    const size_t spriteCount = sprite.offsets.size();
+    const size_t poseCount = baked.frames.size();
+    if (spriteCount < 2 || sprite.durationsMs.size() != spriteCount ||
+        poseCount == 0)
+    {
+        return false;
+    }
+
+    long long spriteMs = 0;
+    for (const int ms : sprite.durationsMs)
+    {
+        spriteMs += std::max(ms, 0);
+    }
+    long long poseMs = 0;
+    for (const auto &frame : baked.frames)
+    {
+        poseMs += std::max(frame.durationMs, 0);
+    }
+    if (spriteMs <= 0 || poseMs <= 0)
+    {
+        return false;
+    }
+
+    const bool spriteForever = sprite.loopCount == 0;
+    const bool poseForever = baked.plays == 0;
+    if (spriteForever != poseForever)
+    {
+        notes.emplace_back(
+            "animation: a sprite animation and a transform animation, only "
+            "one of which ends, are not combined");
+        return false;
+    }
+
+    // when each of them is over, and how long the combination is
+    long long spriteEnd = 0;
+    long long poseEnd = 0;
+    long long total = 0;
+    if (spriteForever)
+    {
+        total = std::lcm(spriteMs, poseMs);
+        spriteEnd = total;
+        poseEnd = total;
+    }
+    else
+    {
+        spriteEnd = spriteMs * sprite.loopCount;
+        poseEnd = poseMs * baked.plays;
+        total = std::max(spriteEnd, poseEnd);
+    }
+    if (total > MAX_COMBINED_MS)
+    {
+        notes.emplace_back(
+            "animation: a sprite animation and a transform animation that "
+            "take more than 10 s together are not combined");
+        return false;
+    }
+
+    // every moment one of them changes
+    std::vector<long long> cuts{0};
+    const auto addCuts = [&](size_t count, auto durationOf, long long period,
+                             long long end) {
+        for (long long start = 0; start < end; start += period)
+        {
+            long long at = start;
+            for (size_t i = 0; i < count; i++)
+            {
+                at += std::max(durationOf(i), 0);
+                if (at < end)
+                {
+                    cuts.push_back(at);
+                }
+            }
+        }
+        if (end < total)
+        {
+            cuts.push_back(end);
+        }
+    };
+    addCuts(
+        spriteCount, [&](size_t i) { return sprite.durationsMs[i]; },
+        spriteMs, spriteEnd);
+    addCuts(
+        poseCount, [&](size_t i) { return baked.frames[i].durationMs; },
+        poseMs, poseEnd);
+    std::sort(cuts.begin(), cuts.end());
+    cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+
+    std::vector<long long> kept{0};
+    for (const long long cut : cuts)
+    {
+        if (cut - kept.back() >= MIN_COMBINED_FRAME_MS &&
+            total - cut >= MIN_COMBINED_FRAME_MS)
+        {
+            kept.push_back(cut);
+        }
+    }
+    kept.push_back(total);
+
+    // which frame of a list is shown at a moment (`count` if it is over)
+    const auto locate = [](size_t count, auto durationOf, long long period,
+                           long long end, long long at) -> size_t {
+        if (at >= end)
+        {
+            return count;
+        }
+        long long into = at % period;
+        for (size_t i = 0; i < count; i++)
+        {
+            into -= std::max(durationOf(i), 0);
+            if (into < 0)
+            {
+                return i;
+            }
+        }
+        return count - 1;
+    };
+
+    std::vector<QPoint> offsets;
+    std::vector<int> durations;
+    std::vector<SpritePose> poses;
+    const SpritePose restPose = poseOf(baked.rest, box);
+    for (size_t i = 0; i + 1 < kept.size(); i++)
+    {
+        const long long at = kept[i];
+        const size_t spriteIndex = locate(
+            spriteCount, [&](size_t k) { return sprite.durationsMs[k]; },
+            spriteMs, spriteEnd, at);
+        const size_t poseIndex = locate(
+            poseCount, [&](size_t k) { return baked.frames[k].durationMs; },
+            poseMs, poseEnd, at);
+
+        const QPoint offset = spriteIndex < spriteCount
+                                  ? sprite.offsets[spriteIndex]
+                                  : sprite.restOffset;
+        const SpritePose pose =
+            poseIndex < poseCount ? poseOf(baked.frames[poseIndex].state, box)
+                                  : restPose;
+        const int duration = static_cast<int>(kept[i + 1] - kept[i]);
+
+        if (!poses.empty() && offsets.back() == offset && poses.back() == pose)
+        {
+            durations.back() += duration;
+            continue;
+        }
+        offsets.push_back(offset);
+        durations.push_back(duration);
+        poses.push_back(pose);
+    }
+
+    sprite.offsets = std::move(offsets);
+    sprite.durationsMs = std::move(durations);
+    sprite.poses = std::move(poses);
+    // the poses carry the element's filters
+    sprite.filters.clear();
+    // played once, and then it rests (`restOffset` is where the sheet
+    // rests), or for as long as both go on
+    sprite.loopCount = spriteForever ? 0 : 1;
+    sprite.restPose = restPose;
+    return true;
+}
+
 void bakeAnimations(const Props &props, const Keyframes &keyframes,
                     DggEmoteStyle &style, QSize sheetSize,
-                    std::vector<string> &notes)
+                    std::vector<string> &outNotes)
 {
     const auto rawIt = props.find("animation-raw");
-    if (rawIt == props.end() || style.sprite.offsets.size() != 1)
+    if (rawIt == props.end() || style.sprite.offsets.empty())
     {
         return;
+    }
+
+    // An emote that steps through a sheet (BONK) is only given the poses of
+    // its other animations (see combineWithSprite()). What it has to say
+    // about the animations it can't use is left out, as it was before.
+    const bool spriteAnimated = style.sprite.offsets.size() > 1;
+    std::vector<string> localNotes;
+    auto &notes = spriteAnimated ? localNotes : outNotes;
+    string spriteName;
+    if (spriteAnimated)
+    {
+        if (const auto it = props.find("animation-name"); it != props.end())
+        {
+            spriteName = it->second;
+        }
     }
     const auto rawList = resolveVars(rawIt->second, props);
     if (!rawList || trimView(*rawList) == "none")
@@ -2497,7 +2699,8 @@ void bakeAnimations(const Props &props, const Keyframes &keyframes,
     std::vector<anim::Animation> animations;
     for (const auto &spec : *specs)
     {
-        if (spec.name.empty() || spec.name == "none")
+        if (spec.name.empty() || spec.name == "none" ||
+            (spriteAnimated && spec.name == spriteName))
         {
             continue;
         }
@@ -2676,21 +2879,32 @@ void bakeAnimations(const Props &props, const Keyframes &keyframes,
         notes.push_back("animation baking: " + problem);
         return;
     }
-    // what the sprite path had to say about these animations is moot now
-    std::erase_if(notes, [](const string &note) {
-        return note.rfind("animation ", 0) == 0;
-    });
+    if (spriteAnimated && !combineWithSprite(style, *baked, box, outNotes))
+    {
+        return;
+    }
+    if (!spriteAnimated)
+    {
+        // what the sprite path had to say about these animations is moot now
+        std::erase_if(outNotes, [](const string &note) {
+            return note.rfind("animation ", 0) == 0;
+        });
+    }
     std::sort(approximations.begin(), approximations.end());
     approximations.erase(
         std::unique(approximations.begin(), approximations.end()),
         approximations.end());
     for (const auto &note : approximations)
     {
-        notes.push_back(note);
+        outNotes.push_back(note);
     }
     if (baked->truncated)
     {
-        notes.emplace_back("animation baking: cut off after 10 s");
+        outNotes.emplace_back("animation baking: cut off after 10 s");
+    }
+    if (spriteAnimated)
+    {
+        return;
     }
 
     auto frames = baked->frames;

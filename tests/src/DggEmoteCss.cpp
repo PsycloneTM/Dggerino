@@ -1095,3 +1095,65 @@ TEST(DggEmoteCss, NoTearsFollowsTheSitesSelectors)
     expectNoTears("NUUN", 3, L::Still);
     expectNoTears("NLUN", 3, L::Still);
 }
+
+// BONK hits (`BONK-anim` steps through the two frames of its sheet) and
+// shakes (`YUMP-anim` animates `transform`) at the same time. Only the hit
+// used to be played: an emote with a sprite animation got no poses.
+TEST(DggEmoteCss, BonkShakesWhileItStepsThroughItsSheet)
+{
+    const char *const css = R"CSS(
+.emote.BONK {
+    background-image: url("66828047c48cd.png");
+    height: 32px;
+    width: 110px;
+}
+@keyframes BONK-anim {
+  100% { background-position: -110px; }
+}
+.emote.BONK {
+  width: 55px;
+  height: 32px;
+  animation: BONK-anim .15s steps(2) 9 alternate-reverse , YUMP-anim .3s 5 .1s reverse;
+}
+@keyframes YUMP-anim {
+    0% { transform: translate(0px, 0px); }
+    25% { transform: translate(0px, -7.5px) rotate(-3deg); animation-timing-function: ease }
+    37% { transform: translate(0px, 0px) rotate(-3deg); animation-timing-function: ease-in }
+    55% { transform: translate(0px, -3px) rotate(4deg); animation-timing-function: ease}
+    60% { transform: translate(0px, 0px) rotate(4deg); animation-timing-function: ease-in}
+    75% { transform: translate(0px, -1.5px); animation-timing-function: ease }
+    100% { transform: translate(0px, 0px); animation-timing-function: ease-in}
+}
+)CSS";
+    const auto parsed = DggEmoteCss::parse(QString::fromUtf8(css));
+    const auto style = parsed.resolve(QStringLiteral("BONK"),
+                                      userContext("someone"), QSize(110, 32));
+    ASSERT_TRUE(style.valid);
+    EXPECT_EQ(style.frameSize, QSize(55, 32));
+
+    // one pose for every frame, over the 0.1 s delay and five 0.3 s shakes
+    ASSERT_TRUE(style.sprite.hasPoses());
+    EXPECT_EQ(style.sprite.poses.size(), style.sprite.offsets.size());
+    EXPECT_EQ(style.sprite.durationsMs.size(), style.sprite.offsets.size());
+    EXPECT_EQ(totalMs(style), 1600);
+    EXPECT_EQ(style.sprite.loopCount, 1);
+
+    // both frames of the sheet are still shown, and the shake lifts it up
+    bool first = false;
+    bool second = false;
+    for (const auto &offset : style.sprite.offsets)
+    {
+        first = first || offset == QPoint(0, 0);
+        second = second || offset == QPoint(55, 0);
+    }
+    EXPECT_TRUE(first);
+    EXPECT_TRUE(second);
+    const auto lifted = std::any_of(
+        style.sprite.poses.begin(), style.sprite.poses.end(),
+        [](const SpritePose &pose) { return pose.matrix[5] < -2.0; });
+    EXPECT_TRUE(lifted);
+
+    // and it comes to rest on the first frame, not moved
+    EXPECT_EQ(style.sprite.restOffset, QPoint(0, 0));
+    EXPECT_TRUE(style.sprite.restPose.isIdentity());
+}
