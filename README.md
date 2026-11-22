@@ -1,10 +1,10 @@
 ![chatterinoLogo](https://user-images.githubusercontent.com/41973452/272541622-52457e89-5f16-4c83-93e7-91866c25b606.png)
-Chatterino7 [![GitHub Actions Build (Windows, Ubuntu, MacOS)](https://github.com/seventv/chatterino7/actions/workflows/build.yml/badge.svg?branch=chatterino7)](https://github.com/SevenTV/chatterino7/actions?query=workflow%3ABuild+branch%3Achatterino7) [![Chocolatey Package](https://img.shields.io/chocolatey/v/chatterino7?include_prereleases)](https://chocolatey.org/packages/chatterino7)
+Dggerino [![GitHub Actions Build (Windows, Ubuntu, MacOS)](https://github.com/PsycloneTM/dggerino/actions/workflows/build.yml/badge.svg?branch=Dgg)](https://github.com/PsycloneTM/dggerino/actions?query=workflow%3ABuild+branch%3Adgg)
 ============
 
-Chatterino7 is a fork of Chatterino 2. This fork mainly contains features that aren't accepted into Chatterino 2, most notably 7TV subscriber features.
+Dggerino is a fork of Chatterino 2. This fork mainly contains features that aren't accepted into Chatterino 2, most notably Destiny.gg chat.
 
-### Features of Chatterino7
+### Features of Dggerino
 
 - 7TV Name Paints
 
@@ -21,23 +21,21 @@ Chatterino7 is a fork of Chatterino 2. This fork mainly contains features that a
 
 ### Downloads
 
-**Stable builds** can be downloaded from the [releases section](https://github.com/SevenTV/chatterino7/releases/latest).
+**Stable builds** can be downloaded from the [releases section](https://github.com/PsycloneTM/dgg/releases/latest).
 
-To test new features, you can download the **nighly build** [here](https://github.com/SevenTV/chatterino7/releases/tag/nightly-build).
-
-Windows users can install Chatterino7 [from Chocolatey](https://chocolatey.org/packages/chatterino7).
+To test new features, you can download the **nighly build** [here](https://github.com/PsycloneTM/dgg/releases/tag/nightly-build).
 
 ### Issues
 
-If you have issues such as crashes or weird behaviour regarding 7TV features, report them [in the issue-section](https://github.com/SevenTV/chatterino7/issues). If you have issues with other features, please report them [in the upstream issue-section](https://github.com/Chatterino/chatterino2/issues).
+If you have issues such as crashes or weird behaviour regarding Dgg features, report them [in the issue-section](https://github.com/PsycloneTM/dgg/issues). If you have issues with other features, please report them [in the upstream issue-section](https://github.com/Chatterino/chatterino2/issues).
 
 ### Discord
 
-If you don't have a GitHub account and want to report issues or want to join the community you can join the official 7TV Discord using the link here: <https://discord.com/invite/7tv>.
+If you don't have a GitHub account and want to report issues or want to join the community you can join the official 7TV Discord using the link here: <https://discord.com/invite/dgg>.
 
 ### AVIF Support
 
-When building Chatterino 7, you might not have access to a static build of `libavif`. In that case, you can define `CHATTERINO_NO_AVIF_PLUGIN` in CMake. If you have `qavif.so` from [kimageformats](https://invent.kde.org/frameworks/kimageformats) installed on your system, Chatterino will pick it up and use AVIF images.
+When building Dggerino, you might not have access to a static build of `libavif`. In that case, you can define `CHATTERINO_NO_AVIF_PLUGIN` in CMake. If you have `qavif.so` from [kimageformats](https://invent.kde.org/frameworks/kimageformats) installed on your system, Chatterino will pick it up and use AVIF images.
 
 ## Original Chatterino 2 Readme
 
