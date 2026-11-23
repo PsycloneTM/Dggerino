@@ -38,27 +38,53 @@ using namespace Qt::Literals;
 
 namespace {
 
-/// `withKey`: send the logged-in account's login key as the `authtoken`
-/// cookie, the way the chat socket takes it. The URL only holds the nick, so
-/// the key never reaches a log; the `Cookie` header isn't logged either.
+/// A request to the site. With `withKey` (cleared if there is no key to send)
+/// the logged-in account's login key goes along as the `authtoken` cookie, the
+/// way the chat socket takes it. The URLs only hold a nick, so the key never
+/// reaches a log; the `Cookie` header isn't logged either.
+NetworkRequest makeSiteRequest(const QUrl &url, bool &withKey)
+{
+    auto request = NetworkRequest(url);
+    if (!withKey)
+    {
+        return request;
+    }
+
+    const auto account = getApp()->getAccounts()->dgg.current();
+    if (account && !account->loginKey().isEmpty())
+    {
+        return std::move(request).header(
+            "Cookie", ("authtoken=" + account->loginKey()).toUtf8());
+    }
+
+    withKey = false;
+    return request;
+}
+
+/// Whether the site refused the login key (rather than the request failing).
+bool isAuthRefusal(const NetworkResult &result)
+{
+    const auto status = result.status().value_or(0);
+    return status == 401 || status == 403;
+}
+
+/// chat-gui's message limit, counted in code points
+constexpr qsizetype MAX_MESSAGE_LENGTH = 512;
+
+/// Tells the user in `chan` what the site's error `code` means (the same texts
+/// the server's `ERR` events get).
+void sayDggError(DggChannel &chan, const char *code)
+{
+    chan.addSystemMessage(
+        dggErrorText(QJsonObject{{"description"_L1, QLatin1String(code)}}));
+}
+
+/// `withKey`: see makeSiteRequest().
 void fetchUserInfo(
     const QString &nick, bool withKey,
     std::function<void(const std::optional<DggProfile> &, int status)> done)
 {
-    auto request = NetworkRequest(dggUserInfoUrl(nick));
-    if (withKey)
-    {
-        const auto account = getApp()->getAccounts()->dgg.current();
-        if (account && !account->loginKey().isEmpty())
-        {
-            request = std::move(request).header(
-                "Cookie", ("authtoken=" + account->loginKey()).toUtf8());
-        }
-        else
-        {
-            withKey = false;
-        }
-    }
+    auto request = makeSiteRequest(dggUserInfoUrl(nick), withKey);
 
     std::move(request)
         .onSuccess([done](NetworkResult result) {
@@ -66,8 +92,7 @@ void fetchUserInfo(
             done(profile, result.status().value_or(0));
         })
         .onError([nick, withKey, done](const NetworkResult &result) {
-            const auto status = result.status().value_or(0);
-            if (withKey && (status == 401 || status == 403))
+            if (withKey && isAuthRefusal(result))
             {
                 // Whether the site accepts the key on this endpoint was never
                 // tested (it refuses it on the whisper ones): ask again
@@ -75,7 +100,7 @@ void fetchUserInfo(
                 fetchUserInfo(nick, false, done);
                 return;
             }
-            done(std::nullopt, status);
+            done(std::nullopt, result.status().value_or(0));
         })
         .execute();
 }
@@ -91,28 +116,14 @@ void fetchMentionsFromSite(
                        bool failed)>
         done)
 {
-    auto request = NetworkRequest(url);
-    if (withKey)
-    {
-        const auto account = getApp()->getAccounts()->dgg.current();
-        if (account && !account->loginKey().isEmpty())
-        {
-            request = std::move(request).header(
-                "Cookie", ("authtoken=" + account->loginKey()).toUtf8());
-        }
-        else
-        {
-            withKey = false;
-        }
-    }
+    auto request = makeSiteRequest(url, withKey);
 
     std::move(request)
         .onSuccess([done](NetworkResult result) {
             done(parseDggMentions(result.parseJson()), false);
         })
         .onError([url, withKey, done](const NetworkResult &result) {
-            const auto status = result.status().value_or(0);
-            if (withKey && (status == 401 || status == 403))
+            if (withKey && isAuthRefusal(result))
             {
                 fetchMentionsFromSite(url, false, done);
                 return;
@@ -416,6 +427,12 @@ void DggChatServer::ensureConnected(const std::shared_ptr<DggChannel> &chan)
             });
     }
 
+    // A socket that gave up (banned, too many connections) is tried again when
+    // a split asks for the chat, so the user doesn't have to restart.
+    if (this->socket_->hasGivenUp())
+    {
+        this->socket_->stop();
+    }
     if (!this->socket_->isStarted())
     {
         chan->addSystemMessage(u"Connecting to destiny.gg chat..."_s);
@@ -513,33 +530,46 @@ void DggChatServer::onAccountChanged()
     assertInGuiThread();
 
     auto chan = this->channel_.lock();
-    if (!chan || !this->socket_ || !this->socket_->isStarted())
+    if (!chan || !this->socket_)
     {
-        // Nothing is connected: the next connection reads the account.
+        // Nothing is shown: the next connection reads the account.
         return;
     }
 
     const auto account = getApp()->getAccounts()->dgg.current();
+    this->restartSocket(*chan, account->isAnonymous()
+                                   ? u"Logged out. Reconnecting as Guest..."_s
+                                   : u"Reconnecting as %1..."_s.arg(
+                                         account->username()));
+}
 
+void DggChatServer::reconnect()
+{
+    assertInGuiThread();
+
+    auto chan = this->channel_.lock();
+    if (!chan || !this->socket_)
+    {
+        return;
+    }
+    this->restartSocket(*chan, u"Reconnecting to destiny.gg chat..."_s);
+}
+
+void DggChatServer::restartSocket(DggChannel &chan, const QString &notice)
+{
     // stop() doesn't report a close, so what a close would have cleaned up
     // is done here
     this->socket_->stop();
     this->authenticated_ = false;
     this->pendingFrames_.clear();
-    this->endCombo(*chan);
-    chan->endPoll(std::nullopt);
+    this->endCombo(chan);
+    chan.endPoll(std::nullopt);
 
-    if (account->isAnonymous())
-    {
-        chan->addSystemMessage(u"Logged out. Reconnecting as Guest..."_s);
-    }
-    else
-    {
-        chan->addSystemMessage(
-            u"Reconnecting as %1..."_s.arg(account->username()));
-    }
+    chan.addSystemMessage(notice);
 
-    this->socket_->setAuthToken(account->loginKey());
+    // start() begins with a fresh backoff and clears a ban's "don't retry"
+    this->socket_->setAuthToken(
+        getApp()->getAccounts()->dgg.current()->loginKey());
     this->socket_->start();
 }
 
@@ -553,14 +583,9 @@ void DggChatServer::sendChatMessage(DggChannel &chan, const QString &rawText)
         return;
     }
 
-    const auto say = [&](const char *code) {
-        chan.addSystemMessage(
-            dggErrorText(QJsonObject{{"description"_L1, QLatin1String(code)}}));
-    };
-
     if (!getApp()->getAccounts()->dgg.isLoggedIn())
     {
-        say("needlogin");
+        sayDggError(chan, "needlogin");
         return;
     }
 
@@ -616,7 +641,7 @@ void DggChatServer::sendChatMessage(DggChannel &chan, const QString &rawText)
         if (!this->socket_ ||
             !this->socket_->send("DIE", QJsonObject{{"data"_L1, QString()}}))
         {
-            say("notconnected");
+            sayDggError(chan, "notconnected");
         }
         return;
     }
@@ -638,16 +663,16 @@ void DggChatServer::sendChatMessage(DggChannel &chan, const QString &rawText)
 
     // The server counts the same way chat-gui does; this only saves a round
     // trip, the server still has the last word.
-    if (text.toUcs4().size() > 512)
+    if (text.toUcs4().size() > MAX_MESSAGE_LENGTH)
     {
-        say("msgtoolong");
+        sayDggError(chan, "msgtoolong");
         return;
     }
 
     if (!this->socket_ ||
         !this->socket_->send("MSG", QJsonObject{{"data"_L1, text}}))
     {
-        say("notconnected");
+        sayDggError(chan, "notconnected");
         return;
     }
 }
@@ -657,15 +682,10 @@ void DggChatServer::sendWhisper(DggChannel &chan, const QString &rawNick,
 {
     assertInGuiThread();
 
-    const auto say = [&](const char *code) {
-        chan.addSystemMessage(
-            dggErrorText(QJsonObject{{"description"_L1, QLatin1String(code)}}));
-    };
-
     const auto account = getApp()->getAccounts()->dgg.current();
     if (!account || !getApp()->getAccounts()->dgg.isLoggedIn())
     {
-        say("needlogin");
+        sayDggError(chan, "needlogin");
         return;
     }
 
@@ -686,12 +706,12 @@ void DggChatServer::sendWhisper(DggChannel &chan, const QString &rawNick,
     const auto text = rawText.trimmed();
     if (text.isEmpty())
     {
-        say("msgempty");
+        sayDggError(chan, "msgempty");
         return;
     }
-    if (text.toUcs4().size() > 512)
+    if (text.toUcs4().size() > MAX_MESSAGE_LENGTH)
     {
-        say("msgtoolong");
+        sayDggError(chan, "msgtoolong");
         return;
     }
 
@@ -700,7 +720,7 @@ void DggChatServer::sendWhisper(DggChannel &chan, const QString &rawNick,
                                                               {"data"_L1, text},
                                                           }))
     {
-        say("notconnected");
+        sayDggError(chan, "notconnected");
         return;
     }
 
@@ -807,12 +827,7 @@ void DggChatServer::fetchMentions(DggChannel &chan, const QString &args)
                 line.user.nick =
                     chan->canonicalNick(mention.nick).value_or(mention.nick);
                 line.rawText = mention.text;
-                line.isAction =
-                    mention.text.startsWith(u"/me "_s, Qt::CaseInsensitive);
-                line.text = line.isAction ? mention.text.mid(4) : mention.text;
-                line.greentext =
-                    line.text.startsWith(u'>') &&
-                    (line.user.isSubscriber() || line.user.isPrivileged());
+                dggApplyChatText(line);
                 line.timestampMs = mention.timestampMs;
                 // Not the hash of the original line: this one must not be
                 // taken for it (a spotlight finds its line by that id).
@@ -838,19 +853,14 @@ void DggChatServer::castPollVote(DggChannel &chan, int option)
         return;
     }
 
-    const auto say = [&](const char *code) {
-        chan.addSystemMessage(
-            dggErrorText(QJsonObject{{"description"_L1, QLatin1String(code)}}));
-    };
-
     if (!getApp()->getAccounts()->dgg.isLoggedIn())
     {
-        say("needlogin");
+        sayDggError(chan, "needlogin");
         return;
     }
     if (!poll->canVote)
     {
-        say("alreadyvoted");
+        sayDggError(chan, "alreadyvoted");
         return;
     }
 
@@ -859,7 +869,7 @@ void DggChatServer::castPollVote(DggChannel &chan, int option)
         !this->socket_->send("CASTVOTE",
                              QJsonObject{{"vote"_L1, QString::number(option)}}))
     {
-        say("notconnected");
+        sayDggError(chan, "notconnected");
     }
 }
 
@@ -1018,11 +1028,7 @@ void DggChatServer::handleFrame(const DggFrame &frame)
             chan.get(), QDateTime::fromMSecsSinceEpoch(timestampMs),
             DggUser::fromJson(obj.value("user"_L1).toObject()), text,
             frame.backlog, *this->assets_);
-        if (!frame.backlog)
-        {
-            MessageBuilder::triggerHighlights(chan.get(), alert);
-        }
-        chan->addMessage(message, MessageContext::Original);
+        this->addAlertingLine(*chan, message, alert, frame.backlog);
     }
     else if (name == "XPOST"_L1)
     {
@@ -1044,11 +1050,7 @@ void DggChatServer::handleFrame(const DggFrame &frame)
         this->endCombo(*chan);
         auto [message, alert] = DggMessageBuilder::makeXPostMessage(
             chan.get(), *post, frame.backlog);
-        if (!frame.backlog)
-        {
-            MessageBuilder::triggerHighlights(chan.get(), alert);
-        }
-        chan->addMessage(message, MessageContext::Original);
+        this->addAlertingLine(*chan, message, alert, frame.backlog);
     }
     else if (isDggVestaboardName(name))
     {
@@ -1072,11 +1074,7 @@ void DggChatServer::handleFrame(const DggFrame &frame)
         this->endCombo(*chan);
         auto [message, alert] = DggMessageBuilder::makeVestaboardMessage(
             chan.get(), *board, frame.backlog, *this->assets_);
-        if (!frame.backlog)
-        {
-            MessageBuilder::triggerHighlights(chan.get(), alert);
-        }
-        chan->addMessage(message, MessageContext::Original);
+        this->addAlertingLine(*chan, message, alert, frame.backlog);
     }
     else if (isDggEventName(name))
     {
@@ -1265,7 +1263,32 @@ void DggChatServer::handleFrame(const DggFrame &frame)
     else if (name == "ERR"_L1)
     {
         this->endCombo(*chan);
-        chan->addSystemMessage(dggErrorText(obj));
+
+        // After these two the connection is not retried by itself, so the
+        // line ends in a link that reconnects (like Twitch's ban message)
+        const auto description = obj.value("description"_L1).toString();
+        if (description == "banned"_L1)
+        {
+            chan->addMessage(
+                DggMessageBuilder::makeReconnectLine(
+                    chan.get(), QDateTime::currentDateTime(),
+                    dggErrorText(obj),
+                    u"If you believe you have been unbanned, try "
+                    u"reconnecting."_s),
+                MessageContext::Original);
+        }
+        else if (description == "toomanyconnections"_L1)
+        {
+            chan->addMessage(
+                DggMessageBuilder::makeReconnectLine(
+                    chan.get(), QDateTime::currentDateTime(),
+                    dggErrorText(obj), u"Try reconnecting."_s),
+                MessageContext::Original);
+        }
+        else
+        {
+            chan->addSystemMessage(dggErrorText(obj));
+        }
     }
     else if (name == "REFRESHCHATASSETS"_L1)
     {
@@ -1322,6 +1345,18 @@ void DggChatServer::handleFrame(const DggFrame &frame)
     {
         qCDebug(chatterinoDgg) << "Unhandled event" << name;
     }
+}
+
+void DggChatServer::addAlertingLine(DggChannel &chan, const MessagePtr &message,
+                                    const HighlightAlert &alert, bool backlog)
+{
+    if (!backlog)
+    {
+        // sound and window alert of the line's highlight, not for lines that
+        // are only being replayed
+        MessageBuilder::triggerHighlights(&chan, alert);
+    }
+    chan.addMessage(message, MessageContext::Original);
 }
 
 DggComboLine DggChatServer::comboLine(ComboState &state, bool complete) const

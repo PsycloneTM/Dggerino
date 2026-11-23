@@ -43,8 +43,8 @@ public:
     /// without emotes, so the server holds them back until then.
     pajlada::Signals::NoArgSignal ready;
 
-    /// Downloads both manifests and both stylesheets. Does nothing if a load is
-    /// already running.
+    /// Downloads both manifests and both stylesheets. If a load is already
+    /// running, another one follows it.
     /// A failed download keeps what was loaded before.
     void load();
 
@@ -200,6 +200,9 @@ private:
     mutable quint64 nextPlayId_ = 0;
 
     bool loading_ = false;
+    /// load() was called while a load was running (`REFRESHCHATASSETS`): run
+    /// it again when that one is done, or the new assets would be missed.
+    bool reloadQueued_ = false;
     bool ready_ = false;
     int pending_ = 0;
 

@@ -20,10 +20,10 @@ HighlightCheck YourUsernameHighlight::buildCheck() const
     using H = std::remove_pointer_t<decltype(this)>;
     using Params = HighlightCheckParams;
 
-    auto twitchRe = [&]() -> std::optional<QRegularExpression> {
-        auto user = getApp()->getAccounts()->twitch.getCurrent();
-        auto name = user->getUserName();
-        if (user->isAnon() || name.isEmpty())
+    // The pattern for the name of an account, or nothing if it's anonymous.
+    auto nameRe = [](bool anonymous,
+                     const QString &name) -> std::optional<QRegularExpression> {
+        if (anonymous || name.isEmpty())
         {
             return std::nullopt;
         }
@@ -34,38 +34,16 @@ HighlightCheck YourUsernameHighlight::buildCheck() const
             QRegularExpression::UseUnicodePropertiesOption |
                 QRegularExpression::CaseInsensitiveOption,
         };
-    }();
-    auto kickRe = [&]() -> std::optional<QRegularExpression> {
-        auto user = getApp()->getAccounts()->kick.current();
-        auto name = user->username();
-        if (user->isAnonymous() || name.isEmpty())
-        {
-            return std::nullopt;
-        }
+    };
 
-        return QRegularExpression{
-            REGEX_START_BOUNDARY % QRegularExpression::escape(name) %
-                REGEX_END_BOUNDARY,
-            QRegularExpression::UseUnicodePropertiesOption |
-                QRegularExpression::CaseInsensitiveOption,
-        };
-    }();
+    const auto twitchUser = getApp()->getAccounts()->twitch.getCurrent();
+    const auto twitchRe = nameRe(twitchUser->isAnon(), twitchUser->getUserName());
 
-    auto dggRe = [&]() -> std::optional<QRegularExpression> {
-        auto user = getApp()->getAccounts()->dgg.current();
-        auto name = user->username();
-        if (user->isAnonymous() || name.isEmpty())
-        {
-            return std::nullopt;
-        }
+    const auto kickUser = getApp()->getAccounts()->kick.current();
+    const auto kickRe = nameRe(kickUser->isAnonymous(), kickUser->username());
 
-        return QRegularExpression{
-            REGEX_START_BOUNDARY % QRegularExpression::escape(name) %
-                REGEX_END_BOUNDARY,
-            QRegularExpression::UseUnicodePropertiesOption |
-                QRegularExpression::CaseInsensitiveOption,
-        };
-    }();
+    const auto dggUser = getApp()->getAccounts()->dgg.current();
+    const auto dggRe = nameRe(dggUser->isAnonymous(), dggUser->username());
 
     if (!twitchRe && !kickRe && !dggRe)
     {

@@ -59,6 +59,16 @@ void DggChannel::setStreamInfo(DggStreamInfo info)
     }
 }
 
+bool DggChannel::canReconnect() const
+{
+    return true;
+}
+
+void DggChannel::reconnect()
+{
+    getApp()->getDggChatServer()->reconnect();
+}
+
 bool DggChannel::canSendMessage() const
 {
     return getApp()->getAccounts()->dgg.isLoggedIn();

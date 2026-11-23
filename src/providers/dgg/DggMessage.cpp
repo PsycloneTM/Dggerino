@@ -359,6 +359,17 @@ qint64 dggTimestampMs(const QJsonObject &obj, qint64 nowMs)
     return toInt64(value);
 }
 
+void dggApplyChatText(DggChatMessage &msg)
+{
+    // chat-gui strips a leading "/me " (any case) and styles the line as an
+    // action.
+    msg.isAction = msg.rawText.startsWith(u"/me "_s, Qt::CaseInsensitive);
+    msg.text = msg.isAction ? msg.rawText.mid(4) : msg.rawText;
+
+    msg.greentext = msg.text.startsWith(u'>') &&
+                    (msg.user.isSubscriber() || msg.user.isPrivileged());
+}
+
 std::optional<DggChatMessage> parseDggChatMessage(const QJsonObject &obj,
                                                   qint64 nowMs)
 {
@@ -373,13 +384,7 @@ std::optional<DggChatMessage> parseDggChatMessage(const QJsonObject &obj,
     msg.timestampMs = dggTimestampMs(obj, nowMs);
     msg.hash = dggMessageHash(msg.timestampMs, msg.user.id, msg.rawText);
 
-    // chat-gui strips a leading "/me " (any case) and styles the line as an
-    // action.
-    msg.isAction = msg.rawText.startsWith(u"/me "_s, Qt::CaseInsensitive);
-    msg.text = msg.isAction ? msg.rawText.mid(4) : msg.rawText;
-
-    msg.greentext = msg.text.startsWith(u'>') &&
-                    (msg.user.isSubscriber() || msg.user.isPrivileged());
+    dggApplyChatText(msg);
     return msg;
 }
 

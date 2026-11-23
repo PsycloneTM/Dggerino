@@ -1103,6 +1103,37 @@ MessagePtrMut DggMessageBuilder::makeSystemLine(DggChannel *channel,
     return builder.release();
 }
 
+MessagePtrMut DggMessageBuilder::makeReconnectLine(DggChannel *channel,
+                                                   const QDateTime &time,
+                                                   const QString &text,
+                                                   const QString &prompt)
+{
+    DggMessageBuilder builder(systemMessage, channel, time);
+
+    // Like a stock system line: a word that is a link stays a link
+    for (const auto &word : text.split(u' ', Qt::SkipEmptyParts))
+    {
+        if (auto link = linkparser::parse(word))
+        {
+            builder.addLink(*link, word);
+            continue;
+        }
+        builder.emplace<TextElement>(word, MessageElementFlag::Text,
+                                     MessageColor::System);
+    }
+
+    builder
+        .emplace<TextElement>(prompt, MessageElementFlag::Text,
+                              MessageColor::Link)
+        ->setLink(Link(Link::Reconnect, QString()));
+
+    const auto full = text + u' ' + prompt;
+    builder->messageText = full;
+    builder->searchText = full;
+
+    return builder.release();
+}
+
 MessagePtrMut DggMessageBuilder::makeModerationLine(
     DggChannel *channel, const QDateTime &time, const QString &text,
     const QString &target, const QString &moderator, bool backlog)

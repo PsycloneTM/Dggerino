@@ -381,6 +381,12 @@ DggPollVote parseDggPollVote(const QJsonObject &obj);
 /// The event's `timestamp` (Unix ms), or `nowMs` if it has none.
 qint64 dggTimestampMs(const QJsonObject &obj, qint64 nowMs);
 
+/// Fills in what is derived from `rawText` and `user` of a public chat line:
+/// `isAction` and `text` (a leading `/me ` is cut off, in any case) and
+/// `greentext` (only subscribers and moderators get it). Used for lines from
+/// `MSG` and from the mentions API, so both are read the same way.
+void dggApplyChatText(DggChatMessage &msg);
+
 /// Parses a `MSG` payload. Returns nullopt if it has no nick or no text.
 std::optional<DggChatMessage> parseDggChatMessage(const QJsonObject &obj,
                                                   qint64 nowMs);

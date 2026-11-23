@@ -177,6 +177,7 @@ void DggAssets::load()
 
     if (this->loading_)
     {
+        this->reloadQueued_ = true;
         return;
     }
     this->loading_ = true;
@@ -307,6 +308,11 @@ void DggAssets::onFetchFinished()
     {
         this->ready_ = true;
         this->ready.invoke();
+    }
+    if (this->reloadQueued_)
+    {
+        this->reloadQueued_ = false;
+        this->load();
     }
 }
 
@@ -463,6 +469,12 @@ void DggAssets::rebuildBadges()
     // The stylesheet is the main source for badge images and their order.
     // The manifest only fills in flairs the stylesheet has no image for
     // (its images are the same ones in most cases).
+    StringMap<const DggFlairDef *> manifestByName;
+    for (const auto &manifest : this->flairs_)
+    {
+        manifestByName.emplace(manifest.name, &manifest);
+    }
+
     StringMap<EmotePtr> badges;
     StringMap<int> orders;
     for (const auto &def : this->cssFlairs_)
@@ -478,14 +490,11 @@ void DggAssets::rebuildBadges()
         // The stylesheet has no names: take the label and description from
         // the manifest when it lists the flair.
         auto named = def;
-        for (const auto &manifest : this->flairs_)
+        if (const auto it = manifestByName.find(def.name);
+            it != manifestByName.end())
         {
-            if (manifest.name == def.name)
-            {
-                named.label = manifest.label;
-                named.description = manifest.description;
-                break;
-            }
+            named.label = it->second->label;
+            named.description = it->second->description;
         }
         badges.emplace(def.name, makeBadge(named));
     }

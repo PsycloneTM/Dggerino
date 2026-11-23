@@ -64,6 +64,14 @@ public:
         return this->wanted_;
     }
 
+    /// start() was called, but the server refused the connection for good
+    /// (banned, too many connections), so nothing will be retried until
+    /// stop() and start() are called again.
+    bool hasGivenUp() const
+    {
+        return this->wanted_ && !this->retryEnabled_;
+    }
+
     /// The handshake completed and the connection hasn't closed since.
     bool isOpen() const
     {

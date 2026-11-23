@@ -143,10 +143,21 @@ void DggAccountManager::addAndActivate(const DggAccountData &data)
     }
 
     data.save();
-    this->addAccount(data);
+    const auto response = this->addAccount(data);
     this->userListUpdated.invoke();
+
+    const auto username = data.username.toLower();
+    if (response == AddUserResponse::UserUpdated &&
+        this->currentUsername.getValue() == username)
+    {
+        // The active account got a new key. Assigning the same name below
+        // changes nothing, so nothing would reconnect with the new key.
+        this->currentUserChanged.invoke();
+        return;
+    }
+
     // Setting the name is what switches the current account (see load()).
-    this->currentUsername = data.username.toLower();
+    this->currentUsername = username;
 }
 
 DggAccountManager::AddUserResponse DggAccountManager::addAccount(

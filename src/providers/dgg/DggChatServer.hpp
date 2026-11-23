@@ -29,6 +29,7 @@ class DggChannel;
 struct DggChatMessage;
 struct DggComboLine;
 class DggWebSocket;
+struct HighlightAlert;
 
 /// Owns the destiny.gg chat channel and its websocket.
 ///
@@ -102,6 +103,12 @@ public:
     /// thread only.
     void fetchMentions(DggChannel &chan, const QString &args);
 
+    /// The Reconnect button of the split: drops the connection and connects
+    /// again as the active account, whatever state the socket is in (retrying,
+    /// or given up after a ban). Does nothing if no split shows the chat. GUI
+    /// thread only.
+    void reconnect();
+
 private:
     void ensureConnected(const std::shared_ptr<DggChannel> &chan);
 
@@ -123,6 +130,9 @@ private:
     /// The active destiny.gg account changed (login, logout, switch):
     /// reconnects so the connection is made as the new user.
     void onAccountChanged();
+    /// Drops the connection and connects again with the active account's key.
+    /// `notice` is shown in the chat first.
+    void restartSocket(DggChannel &chan, const QString &notice);
     /// Entry point for frames from the websocket. Holds them back until the
     /// emote and flair manifests and the site images are loaded, so the
     /// backlog isn't built without emotes or the icon of a death line.
@@ -173,6 +183,12 @@ private:
     void endCombo(DggChannel &chan);
 
     DggComboLine comboLine(ComboState &state, bool complete) const;
+
+    /// Adds a line for an event (broadcast, X post, ...) and plays its
+    /// highlight's sound and window alert, unless the line only comes from the
+    /// history replay.
+    void addAlertingLine(DggChannel &chan, const MessagePtr &message,
+                         const HighlightAlert &alert, bool backlog);
 
     std::optional<ComboState> combo_;
 

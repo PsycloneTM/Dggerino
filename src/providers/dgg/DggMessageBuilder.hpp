@@ -96,6 +96,15 @@ public:
                                         const QString &text, bool backlog,
                                         bool moderation);
 
+    /// A system line that ends in a clickable `prompt` (in the colour of links)
+    /// which reconnects the chat, like Twitch's "try reconnecting" after a
+    /// ban. Links inside `text` (the profile page in the ban text) stay
+    /// clickable.
+    static MessagePtrMut makeReconnectLine(DggChannel *channel,
+                                           const QDateTime &time,
+                                           const QString &text,
+                                           const QString &prompt);
+
     /// A `MUTE`, `UNMUTE`, `BAN` or `UNBAN` line (`text` is what
     /// dggModerationText() made of it): a system line in which the target
     /// and the moderator (empty for none) are clickable: a click opens the

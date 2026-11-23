@@ -159,6 +159,25 @@ TEST(DggMessage, GreentextAfterSlashMe)
     EXPECT_TRUE(msg->greentext);
 }
 
+TEST(DggMessage, ApplyChatTextReadsMeAndGreentext)
+{
+    // the mentions API has no flags of its own: the same rules as for `MSG`
+    DggChatMessage msg;
+    msg.user.subTier = 1;
+    msg.rawText = u"/ME >be me"_s;
+    dggApplyChatText(msg);
+    EXPECT_TRUE(msg.isAction);
+    EXPECT_EQ(msg.text, u">be me"_s);
+    EXPECT_TRUE(msg.greentext);
+
+    DggChatMessage plain;
+    plain.rawText = u">be me"_s;
+    dggApplyChatText(plain);
+    EXPECT_FALSE(plain.isAction);
+    EXPECT_EQ(plain.text, u">be me"_s);
+    EXPECT_FALSE(plain.greentext);
+}
+
 TEST(DggMessage, ModerationText)
 {
     auto mute = obj(

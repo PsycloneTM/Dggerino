@@ -55,6 +55,12 @@ public:
     /// Fired after the broadcast went live or offline.
     pajlada::Signals::NoArgSignal liveStatusChanged;
 
+    /// Shows the Reconnect entry of the split's menu (and its hotkey), like
+    /// Twitch does. Also works after a ban or "too many connections", where
+    /// the connection doesn't retry by itself.
+    bool canReconnect() const override;
+    void reconnect() override;
+
     bool canSendMessage() const override;
     bool isWritable() const override;
 
