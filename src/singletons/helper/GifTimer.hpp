@@ -23,6 +23,14 @@ public:
         return this->position_;
     }
 
+    /// Moves the shared animation clock forward by `ms` milliseconds. Called by
+    /// the timer itself on every tick; tests use it to step animations without
+    /// waiting for real time to pass.
+    void advance(long unsigned ms)
+    {
+        this->position_ += ms;
+    }
+
     void registerOpenOverlayWindow()
     {
         this->openOverlayWindows_++;

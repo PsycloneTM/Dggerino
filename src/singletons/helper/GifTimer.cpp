@@ -42,8 +42,8 @@ void GIFTimer::initialize()
         // the clock never pauses (a browser's doesn't either): when the
         // window is idle only the redraws stop, and animations come back
         // in the right phase
-        this->position_ +=
-            static_cast<unsigned long>(std::clamp<qint64>(delta, 1, 60000));
+        this->advance(
+            static_cast<unsigned long>(std::clamp<qint64>(delta, 1, 60000)));
 
         if (getSettings()->animationsWhenFocused &&
             this->openOverlayWindows_ == 0 &&
