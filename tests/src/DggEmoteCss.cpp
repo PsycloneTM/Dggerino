@@ -318,7 +318,8 @@ TEST(DggEmoteCss, MhmKeepsFullGifFrameAndItsCssFilter)
     EXPECT_EQ(style.sprite.offsets.front(), QPoint(0, 0));
     EXPECT_FALSE(style.animated());
     ASSERT_EQ(style.sprite.filters.size(), 1U);
-    EXPECT_EQ(style.sprite.filters.front().kind, SpriteColorFilter::Kind::HueRotate);
+    EXPECT_EQ(style.sprite.filters.front().kind,
+              SpriteColorFilter::Kind::HueRotate);
     EXPECT_EQ(style.sprite.filters.front().amount, -30.0);
     // A filter makes it a processed whole-image animation, not a sprite sheet.
     EXPECT_FALSE(style.isWholeImage(QSize(44, 36)));
@@ -364,8 +365,9 @@ TEST(DggEmoteCss, EmptyStylesheetResolvesNothing)
 {
     const DggEmoteCss empty = DggEmoteCss::parse(QString());
     EXPECT_TRUE(empty.isEmpty());
-    EXPECT_FALSE(empty.resolve(QStringLiteral("Askers"), userContext("x"),
-                               QSize(5544, 34))
+    EXPECT_FALSE(empty
+                     .resolve(QStringLiteral("Askers"), userContext("x"),
+                              QSize(5544, 34))
                      .valid);
 }
 
@@ -426,8 +428,8 @@ TEST(DggEmoteCss, DggLPicksTheVariantOfTheUserAndTheTier)
 {
     const QSize sheet(825, 35);
 
-    const auto normal = css().resolve(QStringLiteral("dggL"),
-                                      userContext("someone"), sheet);
+    const auto normal =
+        css().resolve(QStringLiteral("dggL"), userContext("someone"), sheet);
     ASSERT_TRUE(normal.valid);
     EXPECT_EQ(normal.frameSize.width(), 33);
     EXPECT_EQ(normal.frameSize.height(), 35);
@@ -436,8 +438,8 @@ TEST(DggEmoteCss, DggLPicksTheVariantOfTheUserAndTheTier)
     EXPECT_FALSE(normal.animated());
 
     // a username selector
-    const auto peach = css().resolve(QStringLiteral("dggL"),
-                                     userContext("peachachoo"), sheet);
+    const auto peach =
+        css().resolve(QStringLiteral("dggL"), userContext("peachachoo"), sheet);
     ASSERT_EQ(peach.sprite.offsets.size(), 1U);
     EXPECT_EQ(peach.sprite.offsets[0].x(), 693);
 
@@ -463,8 +465,8 @@ TEST(DggEmoteCss, GlorpIsTintedForSomeUsers)
 {
     const QSize sheet(308, 28);
 
-    const auto normal = css().resolve(QStringLiteral("glorp"),
-                                      userContext("someone"), sheet);
+    const auto normal =
+        css().resolve(QStringLiteral("glorp"), userContext("someone"), sheet);
     ASSERT_TRUE(normal.valid);
     EXPECT_EQ(normal.frameSize.width(), 28);
     EXPECT_EQ(normal.sprite.offsets[0].x(), 0);
@@ -526,12 +528,12 @@ TEST(DggEmoteCss, WholeImageIsRecognised)
 TEST(DggEmoteCss, StylesThatDrawTheSameShareAKey)
 {
     const QSize sheet(825, 35);
-    const auto a = css().resolve(QStringLiteral("dggL"),
-                                 userContext("someone"), sheet);
-    const auto b = css().resolve(QStringLiteral("dggL"),
-                                 userContext("somebody"), sheet);
-    const auto c = css().resolve(QStringLiteral("dggL"),
-                                 userContext("peachachoo"), sheet);
+    const auto a =
+        css().resolve(QStringLiteral("dggL"), userContext("someone"), sheet);
+    const auto b =
+        css().resolve(QStringLiteral("dggL"), userContext("somebody"), sheet);
+    const auto c =
+        css().resolve(QStringLiteral("dggL"), userContext("peachachoo"), sheet);
     EXPECT_TRUE(a.cacheKey() == b.cacheKey());
     EXPECT_TRUE(a.cacheKey() != c.cacheKey());
 }
@@ -698,8 +700,8 @@ TEST(DggEmoteCss, CoggersSpinsInEveryPositionOfAMessage)
     auto first = userContext("someone");
     first.elements = {QStringLiteral("COGGERS"), QStringLiteral("COGGERS")};
     first.elementIndex = 0;
-    const auto odd = coggersCss().resolve(QStringLiteral("COGGERS"), first,
-                                          QSize(32, 32));
+    const auto odd =
+        coggersCss().resolve(QStringLiteral("COGGERS"), first, QSize(32, 32));
     ASSERT_TRUE(odd.valid);
     EXPECT_TRUE(odd.animated());
     EXPECT_EQ(odd.sprite.loopCount, 1);
@@ -708,8 +710,8 @@ TEST(DggEmoteCss, CoggersSpinsInEveryPositionOfAMessage)
     // animation away
     auto second = first;
     second.elementIndex = 1;
-    const auto even = coggersCss().resolve(QStringLiteral("COGGERS"), second,
-                                           QSize(32, 32));
+    const auto even =
+        coggersCss().resolve(QStringLiteral("COGGERS"), second, QSize(32, 32));
     ASSERT_TRUE(even.valid);
     EXPECT_TRUE(even.animated());
     EXPECT_EQ(even.sprite.loopCount, 1);
@@ -772,8 +774,8 @@ const DggEmoteCss &nudgeCss()
 
 TEST(DggEmoteCss, LeftNudgeOfTheEmoteIsPlayedAsAShift)
 {
-    const auto style = nudgeCss().resolve(QStringLiteral("OverRustle"),
-                                          userContext("someone"), QSize(33, 30));
+    const auto style = nudgeCss().resolve(
+        QStringLiteral("OverRustle"), userContext("someone"), QSize(33, 30));
     ASSERT_TRUE(style.valid);
     EXPECT_TRUE(style.animated());
     EXPECT_EQ(style.sprite.loopCount, 7);
@@ -793,8 +795,8 @@ TEST(DggEmoteCss, LeftNudgeOfTheEmoteIsPlayedAsAShift)
 
 TEST(DggEmoteCss, SlideInOfTheEmoteIsNotAShake)
 {
-    const auto style = nudgeCss().resolve(QStringLiteral("Slider"),
-                                          userContext("someone"), QSize(29, 30));
+    const auto style = nudgeCss().resolve(
+        QStringLiteral("Slider"), userContext("someone"), QSize(29, 30));
     ASSERT_TRUE(style.valid);
     EXPECT_FALSE(style.animated());
 }
@@ -970,8 +972,7 @@ TEST(DggEmoteCss, ChatUserInFrontOfTheEmoteCountsAsAChatUser)
     auto afterName = userContext("someone");
     afterName.elements = {DGG_CHAT_USER_ELEMENT, name, QString()};
     afterName.elementIndex = 1;
-    const auto still =
-        chatUserCss().resolve(name, afterName, QSize(31, 30));
+    const auto still = chatUserCss().resolve(name, afterName, QSize(31, 30));
     ASSERT_TRUE(still.valid);
     EXPECT_FALSE(still.sprite.hasOverlays());
     EXPECT_FALSE(still.animated());
@@ -979,8 +980,7 @@ TEST(DggEmoteCss, ChatUserInFrontOfTheEmoteCountsAsAChatUser)
     // a link in front of it is not a name: the rule doesn't apply
     auto afterLink = afterName;
     afterLink.elements = {QString(), name, QString()};
-    const auto moving =
-        chatUserCss().resolve(name, afterLink, QSize(31, 30));
+    const auto moving = chatUserCss().resolve(name, afterLink, QSize(31, 30));
     ASSERT_TRUE(moving.valid);
     // the banana
     EXPECT_TRUE(moving.sprite.hasOverlays());
@@ -1148,9 +1148,11 @@ TEST(DggEmoteCss, BonkShakesWhileItStepsThroughItsSheet)
     }
     EXPECT_TRUE(first);
     EXPECT_TRUE(second);
-    const auto lifted = std::any_of(
-        style.sprite.poses.begin(), style.sprite.poses.end(),
-        [](const SpritePose &pose) { return pose.matrix[5] < -2.0; });
+    const auto lifted =
+        std::any_of(style.sprite.poses.begin(), style.sprite.poses.end(),
+                    [](const SpritePose &pose) {
+                        return pose.matrix[5] < -2.0;
+                    });
     EXPECT_TRUE(lifted);
 
     // and it comes to rest on the first frame, not moved

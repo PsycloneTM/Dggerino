@@ -71,7 +71,8 @@ TEST(DggStream, WebpThumbnailIsUsedWhenItIsAllThereIs)
       }}}
     })"));
     ASSERT_TRUE(info.has_value());
-    EXPECT_EQ(info->thumbnailUrl, QString("https://images.kick.com/x/480.webp"));
+    EXPECT_EQ(info->thumbnailUrl,
+              QString("https://images.kick.com/x/480.webp"));
 }
 
 TEST(DggStream, OnlyOneLivePlatformCounts)
@@ -116,15 +117,12 @@ TEST(DggStream, FailedOrOddAnswersAreIgnored)
 {
     // so a hiccup of the site never turns into "offline"
     EXPECT_FALSE(parseDggStreamInfo(json("{}")).has_value());
-    EXPECT_FALSE(
-        parseDggStreamInfo(json(R"({"success": false, "data": null})"))
-            .has_value());
-    EXPECT_FALSE(
-        parseDggStreamInfo(json(R"({"success": true, "data": null})"))
-            .has_value());
-    EXPECT_FALSE(
-        parseDggStreamInfo(json(R"({"success": true, "data": {}})"))
-            .has_value());
+    EXPECT_FALSE(parseDggStreamInfo(json(R"({"success": false, "data": null})"))
+                     .has_value());
+    EXPECT_FALSE(parseDggStreamInfo(json(R"({"success": true, "data": null})"))
+                     .has_value());
+    EXPECT_FALSE(parseDggStreamInfo(json(R"({"success": true, "data": {}})"))
+                     .has_value());
     EXPECT_FALSE(parseDggStreamInfo(
                      json(R"({"success": true, "data": {"streams": []}})"))
                      .has_value());

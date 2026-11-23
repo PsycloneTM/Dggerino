@@ -883,9 +883,6 @@ c2.MessageElementFlag = {
     PlatformBadgeAlways = 0,
     PlatformBadgeIfUnselected = 0,
     DggRainbowUsername = 0,
-    DggComboText = 0,
-    DggComboSplat = 0,
-    DggComboBody = 0,
     Default = 0,
 }
 
@@ -946,8 +943,6 @@ c2.MessageFlag = {
     DggDonation = 0,
     DggSpotlight = 0,
     DggBroadcast = 0,
-    DggXPost = 0,
-    DggVestaboard = 0,
 }
 
 -- End src/messages/MessageFlag.hpp

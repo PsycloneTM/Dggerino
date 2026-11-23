@@ -322,9 +322,8 @@ public:
 
     DggChatServer *getDggChatServer() override
     {
-        assert(false &&
-               "EmptyApplication::getDggChatServer was called without "
-               "being initialized");
+        assert(false && "EmptyApplication::getDggChatServer was called without "
+                        "being initialized");
         return nullptr;
     }
 

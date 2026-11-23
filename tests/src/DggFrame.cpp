@@ -44,8 +44,7 @@ TEST(DggFrame, EventNameIsUppercased)
 
 TEST(DggFrame, GreentextEscape)
 {
-    auto frame = parseDggFrame(
-        R"(MSG {"nick":"a","data":"\u003e implying"})");
+    auto frame = parseDggFrame(R"(MSG {"nick":"a","data":"\u003e implying"})");
     ASSERT_TRUE(frame.has_value());
     EXPECT_EQ(frame->payload.toObject().value("data").toString(),
               QStringLiteral("> implying"));

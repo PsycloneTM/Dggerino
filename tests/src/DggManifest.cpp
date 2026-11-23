@@ -15,8 +15,7 @@ QJsonArray arr(const char *json)
     return QJsonDocument::fromJson(json).array();
 }
 
-DggUser userWith(int tier, bool patreon = false,
-                 const QStringList &roles = {},
+DggUser userWith(int tier, bool patreon = false, const QStringList &roles = {},
                  const QStringList &features = {})
 {
     DggUser user;
@@ -60,7 +59,8 @@ TEST(DggManifest, ParsesEmotes)
 
 TEST(DggManifest, EmoteWithoutImageIsKept)
 {
-    auto emotes = parseDggEmotes(arr(R"([{"prefix":"X","image":[]},{"prefix":"Y"}])"));
+    auto emotes =
+        parseDggEmotes(arr(R"([{"prefix":"X","image":[]},{"prefix":"Y"}])"));
     ASSERT_EQ(emotes.size(), 2U);
     EXPECT_FALSE(emotes[0].image.isValid());
     EXPECT_FALSE(emotes[1].image.isValid());
@@ -178,9 +178,10 @@ TEST(DggManifest, RainbowFlairCountsAsColoured)
 
 TEST(DggManifest, ParsesPatreonMemberFromMsg)
 {
-    auto obj = QJsonDocument::fromJson(
-                   R"({"id":1,"nick":"a","patreonMember":true,"subscription":null})")
-                   .object();
+    auto obj =
+        QJsonDocument::fromJson(
+            R"({"id":1,"nick":"a","patreonMember":true,"subscription":null})")
+            .object();
     auto user = DggUser::fromJson(obj);
     EXPECT_TRUE(user.patreonMember);
     EXPECT_EQ(user.subTier, 0);

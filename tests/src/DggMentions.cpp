@@ -56,11 +56,12 @@ TEST(DggMentions, ArgsRejectBadNickAndLimit)
     EXPECT_FALSE(parseDggMentionsArgs("", "").error.isEmpty());
     // too short, too long, not a word
     EXPECT_FALSE(parseDggMentionsArgs("ab", "cyclone").error.isEmpty());
-    EXPECT_FALSE(
-        parseDggMentionsArgs("abcdefghijklmnopqrstu", "cyclone").error.isEmpty());
+    EXPECT_FALSE(parseDggMentionsArgs("abcdefghijklmnopqrstu", "cyclone")
+                     .error.isEmpty());
     EXPECT_FALSE(parseDggMentionsArgs("no-way", "cyclone").error.isEmpty());
     // limit that isn't a number
-    EXPECT_FALSE(parseDggMentionsArgs("Destiny many", "cyclone").error.isEmpty());
+    EXPECT_FALSE(
+        parseDggMentionsArgs("Destiny many", "cyclone").error.isEmpty());
 }
 
 TEST(DggMentions, UrlHasNickAndLimit)
@@ -95,11 +96,13 @@ TEST(DggMentions, ParsesTheSitesAnswer)
 
 TEST(DggMentions, NoDataAndEmptyDataMeanNone)
 {
-    const auto none = parseDggMentions(json(R"({"success": true, "data": null})"));
+    const auto none =
+        parseDggMentions(json(R"({"success": true, "data": null})"));
     ASSERT_TRUE(none.has_value());
     EXPECT_TRUE(none->empty());
 
-    const auto empty = parseDggMentions(json(R"({"success": true, "data": []})"));
+    const auto empty =
+        parseDggMentions(json(R"({"success": true, "data": []})"));
     ASSERT_TRUE(empty.has_value());
     EXPECT_TRUE(empty->empty());
 }
@@ -109,8 +112,8 @@ TEST(DggMentions, FailureIsNullopt)
     EXPECT_FALSE(parseDggMentions(json(R"({"success": false, "message": "x"})"))
                      .has_value());
     EXPECT_FALSE(parseDggMentions(json(R"({"data": []})")).has_value());
-    EXPECT_FALSE(parseDggMentions(json(R"({"success": true, "data": 5})"))
-                     .has_value());
+    EXPECT_FALSE(
+        parseDggMentions(json(R"({"success": true, "data": 5})")).has_value());
     EXPECT_FALSE(parseDggMentions(QJsonObject{}).has_value());
 }
 

@@ -52,8 +52,7 @@ void expectFrameEquals(const QImage &actual, const unsigned char *rgba,
 }
 
 void expectDecodes(const unsigned char *file, size_t fileSize,
-                   const unsigned char *frames, const int *durations,
-                   int count)
+                   const unsigned char *frames, const int *durations, int count)
 {
     const auto data = bytesOf(file, fileSize);
     ASSERT_TRUE(isApng(data));
@@ -67,8 +66,8 @@ void expectDecodes(const unsigned char *file, size_t fileSize,
     {
         EXPECT_EQ(animation->frames[i].durationMs, durations[i])
             << "frame " << i;
-        expectFrameEquals(animation->frames[i].image,
-                          frames + (i * W * H * 4), i);
+        expectFrameEquals(animation->frames[i].image, frames + (i * W * H * 4),
+                          i);
     }
 }
 
@@ -94,8 +93,8 @@ TEST(ApngDecoder, DisposePrevious)
 
 TEST(ApngDecoder, PaletteFrames)
 {
-    expectDecodes(kPalette, sizeof(kPalette), kPaletteFrames,
-                  kPaletteDurations, 3);
+    expectDecodes(kPalette, sizeof(kPalette), kPaletteFrames, kPaletteDurations,
+                  3);
 }
 
 TEST(ApngDecoder, StaticPngIsNotAnApng)
@@ -120,8 +119,8 @@ TEST(ApngDecoder, GarbageAndTruncatedInput)
     // Cut in the middle of the frame data: either nothing or a clean failure,
     // never a crash
     const auto whole = bytesOf(kNone, sizeof(kNone));
-    for (qsizetype cut : {qsizetype(20), qsizetype(60), whole.size() / 2,
-                          whole.size() - 20})
+    for (qsizetype cut :
+         {qsizetype(20), qsizetype(60), whole.size() / 2, whole.size() - 20})
     {
         (void)decodeApng(whole.left(cut));
     }

@@ -116,8 +116,8 @@ TEST(SpriteSheet, NothingComesOutOfBadInput)
     EXPECT_TRUE(
         sliceSpriteSheet(sheet, specFor(QSize(0, 2), {QPoint(0, 0)}), PLENTY)
             .empty());
-    EXPECT_TRUE(sliceSpriteSheet(sheet, specFor(QSize(4, 2), {}), PLENTY)
-                    .empty());
+    EXPECT_TRUE(
+        sliceSpriteSheet(sheet, specFor(QSize(4, 2), {}), PLENTY).empty());
 
     // one duration per frame
     auto mismatched = specFor(QSize(4, 2), {QPoint(0, 0), QPoint(4, 0)});

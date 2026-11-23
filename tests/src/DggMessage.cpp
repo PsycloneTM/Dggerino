@@ -1,6 +1,6 @@
-#include "providers/dgg/DggCombo.hpp"
 #include "providers/dgg/DggMessage.hpp"
 
+#include "providers/dgg/DggCombo.hpp"
 #include "Test.hpp"
 
 #include <QJsonDocument>
@@ -43,9 +43,8 @@ TEST(DggMessage, ParsesCapturedMsg)
     EXPECT_EQ(msg->user.subTier, 2);
     EXPECT_TRUE(msg->user.isSubscriber());
     EXPECT_FALSE(msg->user.isPrivileged());
-    EXPECT_EQ(msg->user.features,
-              (QStringList{QStringLiteral("flair1"),
-                           QStringLiteral("subscriber")}));
+    EXPECT_EQ(msg->user.features, (QStringList{QStringLiteral("flair1"),
+                                               QStringLiteral("subscriber")}));
     EXPECT_EQ(msg->timestampMs, 1794165468400);
     EXPECT_EQ(msg->time().toMSecsSinceEpoch(), 1794165468400);
     EXPECT_EQ(msg->text, QStringLiteral("OOOO"));
@@ -122,12 +121,13 @@ TEST(DggMessage, GreentextNeedsSubscriberOrPrivilegedRole)
 
     for (const char *role : {"MODERATOR", "PROTECTED", "ADMIN"})
     {
-        auto json = QStringLiteral(
-                        R"({"id":5,"nick":"a","roles":["%1"],"subscription":null,"timestamp":1,"data":">be me"})")
-                        .arg(QString::fromLatin1(role))
-                        .toUtf8();
-        auto msg = parseDggChatMessage(
-            QJsonDocument::fromJson(json).object(), NOW);
+        auto json =
+            QStringLiteral(
+                R"({"id":5,"nick":"a","roles":["%1"],"subscription":null,"timestamp":1,"data":">be me"})")
+                .arg(QString::fromLatin1(role))
+                .toUtf8();
+        auto msg =
+            parseDggChatMessage(QJsonDocument::fromJson(json).object(), NOW);
         ASSERT_TRUE(msg.has_value());
         EXPECT_TRUE(msg->user.isPrivileged()) << role;
         EXPECT_TRUE(msg->greentext) << role;
@@ -165,8 +165,8 @@ TEST(DggMessage, ModerationText)
     EXPECT_EQ(dggModerationText(u"MUTE", mute),
               QStringLiteral("spammer muted by modguy for 10m."));
 
-    auto muteNoDuration = obj(
-        R"({"id":9,"nick":"modguy","timestamp":1,"data":"spammer"})");
+    auto muteNoDuration =
+        obj(R"({"id":9,"nick":"modguy","timestamp":1,"data":"spammer"})");
     EXPECT_EQ(dggModerationText(u"MUTE", muteNoDuration),
               QStringLiteral("spammer muted by modguy."));
 
@@ -179,16 +179,16 @@ TEST(DggMessage, ModerationText)
               QStringLiteral("troll unmuted by modguy."));
 
     // the website lifting a mute is sent as user -1 and has no moderator
-    auto system = obj(
-        R"({"id":-1,"nick":"System","timestamp":1,"data":"subscriber"})");
+    auto system =
+        obj(R"({"id":-1,"nick":"System","timestamp":1,"data":"subscriber"})");
     EXPECT_EQ(dggModerationText(u"UNMUTE", system),
               QStringLiteral("subscriber has been unmuted."));
 }
 
 TEST(DggMessage, ModerationTextIgnoresOtherEventsAndEmptyTargets)
 {
-    EXPECT_TRUE(dggModerationText(u"MSG", obj(R"({"nick":"a","data":"b"})"))
-                    .isEmpty());
+    EXPECT_TRUE(
+        dggModerationText(u"MSG", obj(R"({"nick":"a","data":"b"})")).isEmpty());
     EXPECT_TRUE(dggModerationText(u"BAN", obj(R"({"nick":"a"})")).isEmpty());
     EXPECT_TRUE(
         dggModerationText(u"BAN", obj(R"({"nick":"a","data":""})")).isEmpty());
@@ -231,10 +231,10 @@ TEST(DggMessage, SubOnlyText)
     EXPECT_EQ(dggSubOnlyText(obj(
                   R"({"data":"on","tier":1,"nick":"modguy","timestamp":1})")),
               QStringLiteral("Subscriber only mode enabled by modguy."));
-    EXPECT_EQ(dggSubOnlyText(obj(
-                  R"({"data":"on","tier":3,"nick":"modguy","timestamp":1})")),
-              QStringLiteral(
-                  "Subscriber only mode (Tier 3+) enabled by modguy."));
+    EXPECT_EQ(
+        dggSubOnlyText(
+            obj(R"({"data":"on","tier":3,"nick":"modguy","timestamp":1})")),
+        QStringLiteral("Subscriber only mode (Tier 3+) enabled by modguy."));
     EXPECT_EQ(dggSubOnlyText(obj(R"({"data":"off","timestamp":1})")),
               QStringLiteral("Subscriber only mode disabled."));
     // no tier means tier 1
@@ -250,10 +250,10 @@ TEST(DggMessage, ErrorText)
     EXPECT_EQ(dggErrorText(obj(R"({"description":"toomanyconnections"})")),
               QStringLiteral("Only 5 concurrent connections allowed"));
 
-    EXPECT_EQ(dggErrorText(obj(R"({"description":"submode","tier":2})")),
-              QStringLiteral(
-                  "The channel is currently in subscriber only mode (Tier "
-                  "2+)"));
+    EXPECT_EQ(
+        dggErrorText(obj(R"({"description":"submode","tier":2})")),
+        QStringLiteral("The channel is currently in subscriber only mode (Tier "
+                       "2+)"));
 
     EXPECT_EQ(
         dggErrorText(obj(R"({"description":"bannedphrase","filtered":"x"})")),
@@ -297,9 +297,12 @@ TEST(DggMessage, LearnsImagesWithPathsFromAPage)
         R"(<link href="/static/css/app.css">
            <img src="https://cdn.example.org/img/profile-photo-aaa.0123456789abcdef.png">
            <img src="/img/icons.fedcba9876543210.png">)";
-    EXPECT_EQ(dggLearnSiteImages(page, QUrl(u"https://www.example.org/embed/chat"_s)), 2);
-    EXPECT_EQ(dggPhotoUrl(u"aaa"_s).toString(),
-              u"https://cdn.example.org/img/profile-photo-aaa.0123456789abcdef.png"_s);
+    EXPECT_EQ(
+        dggLearnSiteImages(page, QUrl(u"https://www.example.org/embed/chat"_s)),
+        2);
+    EXPECT_EQ(
+        dggPhotoUrl(u"aaa"_s).toString(),
+        u"https://cdn.example.org/img/profile-photo-aaa.0123456789abcdef.png"_s);
     EXPECT_EQ(dggSiteImage(u"icons"_s).toString(),
               u"https://www.example.org/img/icons.fedcba9876543210.png"_s);
 }
@@ -313,9 +316,10 @@ TEST(DggMessage, RelativeUrlsInStylesheetsKeepTheirDirectory)
              background-image: url(img/icons.b81b90059d7691309000.png);
              background-position: -32px 0px;
            })";
-    EXPECT_EQ(dggLearnSiteImages(
-                  css, QUrl(u"https://cdn.destiny.gg/style.0123456789ab.css"_s)),
-              1);
+    EXPECT_EQ(
+        dggLearnSiteImages(
+            css, QUrl(u"https://cdn.destiny.gg/style.0123456789ab.css"_s)),
+        1);
     EXPECT_EQ(dggSiteImage(u"icons"_s).toString(),
               u"https://cdn.destiny.gg/img/icons.b81b90059d7691309000.png"_s);
 }
@@ -325,16 +329,21 @@ TEST(DggMessage, BareFileNamesTakeThePathOfAnotherImage)
     const QByteArray page =
         R"({"bbb":"profile-photo-bbb.aaaabbbbccccdddd.png"}
            <img src="https://cdn.example.org/img/profile-photo-ccc.1111222233334444.png">)";
-    EXPECT_EQ(dggLearnSiteImages(page, QUrl(u"https://www.example.org/embed/chat"_s)), 2);
-    EXPECT_EQ(dggPhotoUrl(u"bbb"_s).toString(),
-              u"https://cdn.example.org/img/profile-photo-bbb.aaaabbbbccccdddd.png"_s);
+    EXPECT_EQ(
+        dggLearnSiteImages(page, QUrl(u"https://www.example.org/embed/chat"_s)),
+        2);
+    EXPECT_EQ(
+        dggPhotoUrl(u"bbb"_s).toString(),
+        u"https://cdn.example.org/img/profile-photo-bbb.aaaabbbbccccdddd.png"_s);
 }
 
 TEST(DggMessage, RehashedImagesReplaceOldOnes)
 {
     const QUrl page(u"https://www.example.org/embed/chat"_s);
-    dggLearnSiteImages(R"(<img src="/i/profile-photo-ddd.00000000.png">)", page);
-    dggLearnSiteImages(R"(<img src="/i/profile-photo-ddd.11111111.png">)", page);
+    dggLearnSiteImages(R"(<img src="/i/profile-photo-ddd.00000000.png">)",
+                       page);
+    dggLearnSiteImages(R"(<img src="/i/profile-photo-ddd.11111111.png">)",
+                       page);
     EXPECT_EQ(dggPhotoUrl(u"ddd"_s).toString(),
               u"https://www.example.org/i/profile-photo-ddd.11111111.png"_s);
     EXPECT_EQ(dggLearnSiteImages("nothing here", page), 0);
@@ -369,8 +378,12 @@ TEST(DggMessage, ParsesUserInfo)
 
 TEST(DggMessage, UserInfoRefusalsAreNotProfiles)
 {
-    EXPECT_FALSE(parseDggUserInfo(QJsonDocument::fromJson(R"({"success":false,"message":"nope","data":null})").object()));
-    EXPECT_FALSE(parseDggUserInfo(QJsonDocument::fromJson(R"({"success":true,"data":{}})").object()));
+    EXPECT_FALSE(parseDggUserInfo(
+        QJsonDocument::fromJson(
+            R"({"success":false,"message":"nope","data":null})")
+            .object()));
+    EXPECT_FALSE(parseDggUserInfo(
+        QJsonDocument::fromJson(R"({"success":true,"data":{}})").object()));
     EXPECT_FALSE(parseDggUserInfo({}));
 }
 
@@ -380,8 +393,10 @@ TEST(DggMessage, LearnsImagesFromEscapedJson)
     const QByteArray json =
         R"({"profilePhotos":{"buddy":"https:\/\/cdn.example.org\/img\/profile-photo-buddy.0123456789abcdef.png"}})";
     EXPECT_EQ(dggLearnSiteImages(json, page), 1);
-    EXPECT_EQ(dggPhotoUrl(u"buddy"_s),
-              QUrl(u"https://cdn.example.org/img/profile-photo-buddy.0123456789abcdef.png"_s));
+    EXPECT_EQ(
+        dggPhotoUrl(u"buddy"_s),
+        QUrl(
+            u"https://cdn.example.org/img/profile-photo-buddy.0123456789abcdef.png"_s));
 }
 
 TEST(DggMessage, ComboSplatterStaysRedThenFadesToGrey)
@@ -434,9 +449,8 @@ TEST(DggMessage, ParsesAGiftSubWithItsRecipient)
     EXPECT_EQ(event->recipient.nick, QStringLiteral("Lucky"));
 
     // without a recipient there's nothing to say
-    EXPECT_FALSE(parseDggEvent(u"GIFTSUB",
-                               obj(R"({"user":{"nick":"Giver"},"tier":1})"),
-                               NOW));
+    EXPECT_FALSE(parseDggEvent(
+        u"GIFTSUB", obj(R"({"user":{"nick":"Giver"},"tier":1})"), NOW));
 }
 
 TEST(DggMessage, ParsesAMassGiftAndADonation)
@@ -460,8 +474,7 @@ TEST(DggMessage, ParsesAMassGiftAndADonation)
 TEST(DggMessage, ParsesASpotlight)
 {
     const auto event = parseDggEvent(
-        u"SPOTLIGHT",
-        obj(R"({"user":{"id":3,"nick":"Author"},"nick":"Author",
+        u"SPOTLIGHT", obj(R"({"user":{"id":3,"nick":"Author"},"nick":"Author",
                 "data":"a quote","spotlightedBy":"Mod","key":"abc"})"),
         NOW);
     ASSERT_TRUE(event);
@@ -499,8 +512,8 @@ TEST(DggMessage, ParsesAPin)
 
 TEST(DggMessage, AnEmptyPinIsARemoval)
 {
-    const auto empty = parseDggPin(
-        obj(R"({"nick":"Mod","data":"","uuid":"u-1"})"), NOW);
+    const auto empty =
+        parseDggPin(obj(R"({"nick":"Mod","data":"","uuid":"u-1"})"), NOW);
     EXPECT_TRUE(empty.isRemoval());
     // no timestamp: now
     EXPECT_EQ(empty.timestampMs, NOW);
@@ -541,12 +554,11 @@ TEST(DggMessage, ParsesAPollStart)
 TEST(DggMessage, PollStartFallsBackToDefaults)
 {
     // an empty hidden poll: no totals, no `time`, dates as ISO strings
-    const auto poll = parseDggPollStart(
-        obj(R"({"hidden":true,"weighted":true,
+    const auto poll = parseDggPollStart(obj(R"({"hidden":true,"weighted":true,
                 "start":"2026-11-15T20:00:00.000Z",
                 "now":"2026-11-15T20:00:00.000Z",
                 "question":"Pick one","options":["A","B","C"],"nick":"Mod"})"),
-        1700000000000);
+                                        1700000000000);
     ASSERT_TRUE(poll);
     EXPECT_TRUE(poll->hidden);
     EXPECT_TRUE(poll->weighted);
@@ -590,23 +602,23 @@ TEST(DggMessage, APollIsTheSamePollAfterAReconnect)
 {
     // The same poll, sent again after a reconnect: the server's `now` and
     // our own clock moved, `start` did not
-    const auto first = parseDggPollStart(
-        obj(R"({"start":1000000,"now":1005000,"question":"Q",
+    const auto first =
+        parseDggPollStart(obj(R"({"start":1000000,"now":1005000,"question":"Q",
                 "options":["A","B"],"nick":"Mod"})"),
-        2000000);
-    const auto again = parseDggPollStart(
-        obj(R"({"start":1000000,"now":1012000,"question":"Q",
+                          2000000);
+    const auto again =
+        parseDggPollStart(obj(R"({"start":1000000,"now":1012000,"question":"Q",
                 "options":["A","B"],"nick":"Mod"})"),
-        2009000);
+                          2009000);
     ASSERT_TRUE(first);
     ASSERT_TRUE(again);
     EXPECT_EQ(first->key(), again->key());
 
     // another poll by the same user has another key
-    const auto other = parseDggPollStart(
-        obj(R"({"start":1050000,"now":1055000,"question":"Q",
+    const auto other =
+        parseDggPollStart(obj(R"({"start":1050000,"now":1055000,"question":"Q",
                 "options":["A","B"],"nick":"Mod"})"),
-        2000000);
+                          2000000);
     ASSERT_TRUE(other);
     EXPECT_NE(first->key(), other->key());
 }
@@ -636,8 +648,7 @@ TEST(DggMessage, ParsesAVote)
     EXPECT_EQ(hidden.quantity, 1);
 
     // nonsense doesn't subtract votes
-    const auto negative =
-        parseDggPollVote(obj(R"({"vote":-4,"quantity":-2})"));
+    const auto negative = parseDggPollVote(obj(R"({"vote":-4,"quantity":-2})"));
     EXPECT_EQ(negative.option, 0);
     EXPECT_EQ(negative.quantity, 0);
 }
