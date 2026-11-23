@@ -300,9 +300,9 @@ SelectChannelDialog::SelectChannelDialog(QWidget *parent)
 
         auto *kickLabel = new QLabel(
             "Join a Kick channel by its name.<br>This is <b>very "
-            "experimental</b> and Chatterino7 specific. Only basic features "
+            "experimental</b> and Dggerino specific. Only basic features "
             "are supported. Please report bugs <a "
-            "href=\"https://github.com/SevenTV/chatterino7/issues\">here</a>.");
+            "href=\"https://github.com/PsycloneTM/dggerino/issues\">here</a>.");
         kickLabel->setOpenExternalLinks(true);
         kickLabel->setWordWrap(true);
         layout->addWidget(kickLabel);
@@ -342,7 +342,7 @@ SelectChannelDialog::SelectChannelDialog(QWidget *parent)
                 "Show multiple channels in one split. From the input box, you "
                 "can select an active/context channel to send messages in. "
                 "Report issues <a "
-                "href=\"https://github.com/SevenTV/chatterino7/issues\">here</"
+                "href=\"https://github.com/PsycloneTM/dggerino/issues\">here</"
                 "a>.");
             descriptionLabel->setWordWrap(true);
             descriptionLabel->setOpenExternalLinks(true);

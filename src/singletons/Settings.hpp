@@ -814,7 +814,7 @@ public:
     };
 #endif
 
-    BoolSetting xChatterino7NoHttp2{"/x-chatterino7/no-http2", false};
+    BoolSetting xDggerinoNoHttp2{"/x-dggerino/no-http2", false};
 
 private:
     ChatterinoSetting<std::vector<HighlightBlacklistUser>>

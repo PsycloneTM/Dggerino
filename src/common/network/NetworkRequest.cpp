@@ -25,7 +25,7 @@ NetworkRequest::NetworkRequest(const std::string &url,
     this->data->request.setUrl(QUrl(QString::fromStdString(url)));
     this->data->requestType = requestType;
 
-    if (getSettings()->xChatterino7NoHttp2)
+    if (getSettings()->xDggerinoNoHttp2)
     {
         this->data->request.setAttribute(QNetworkRequest::Http2AllowedAttribute,
                                          false);
