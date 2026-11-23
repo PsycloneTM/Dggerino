@@ -140,6 +140,11 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIAN
     # The warnings are stateful, options from target_compile_options get placed
     # before the cxx flags. /W4 enables the initializer warnings.
     string(REGEX REPLACE "/W4\\b" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+    # src/CMakeLists.txt raises RelWithDebInfo from /Ob1 to /Ob2, but that only
+    # applies to the src/ directory. The tests reuse chatterino-lib's PCH, and
+    # clang rejects a PCH built with a different inlining level
+    # ("Inlining differs in precompiled file"), so use the same level here.
+    string(REPLACE "/Ob1" "/Ob2" CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
     target_compile_options(${PROJECT_NAME} PRIVATE
         /W4
         -Wno-missing-designated-field-initializers
