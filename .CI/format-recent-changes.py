@@ -6,10 +6,10 @@ import argparse
 
 
 ROOT_DOWNLOAD_URL = (
-    "https://github.com/SevenTV/chatterino7/releases/download/nightly-build"
+    "https://github.com/PsycloneTM/Dggerino/releases/download/nightly-build"
 )
-WIN_X64_INSTALLERS = ["Chatterino7TV.Nightly.Installer.exe"]
-WIN_ARM64_INSTALLERS = ["Experimental-ARM64-Chatterino7TV.Nightly.Installer.exe"]
+WIN_X64_INSTALLERS = ["ChatterinoDGG.Nightly.Installer.exe"]
+WIN_ARM64_INSTALLERS = ["Experimental-ARM64-ChatterinoDGG.Nightly.Installer.exe"]
 
 
 def create_artifacts_table(artifact_dir: str, include_installer: bool):
