@@ -8,6 +8,7 @@
 #include <QString>
 
 using namespace chatterino;
+using namespace Qt::StringLiterals;
 
 namespace {
 
