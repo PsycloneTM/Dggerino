@@ -4,7 +4,7 @@ name: Build
 on:
   push:
     branches:
-      - chatterino7
+      - dgg
       - "bugfix-release/**"
       - "release/*"
   pull_request:
