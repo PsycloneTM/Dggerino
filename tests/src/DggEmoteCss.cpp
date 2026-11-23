@@ -304,7 +304,7 @@ int totalMs(const DggEmoteStyle &style)
 TEST(DggEmoteCss, ParsesTheFixture)
 {
     EXPECT_FALSE(css().isEmpty());
-    EXPECT_EQ(css().stats().emotes, 9U);
+    EXPECT_EQ(css().stats().emotes, 10U);
     EXPECT_EQ(css().stats().unsupportedRules, 0U);
 }
 

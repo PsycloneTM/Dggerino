@@ -81,7 +81,8 @@ TEST(DggManifest, ParsesFlairs)
         {"label":"nameless"}
     ])"));
 
-    ASSERT_EQ(flairs.size(), 4U);
+    // the entry without a `name` is dropped
+    ASSERT_EQ(flairs.size(), 3U);
 
     EXPECT_EQ(flairs[0].name, "flair17");
     EXPECT_EQ(flairs[0].label, "Micro");
@@ -223,8 +224,8 @@ TEST(DggManifest, FlairCss)
         parseDggFlairCss(css, "https://cdn.destiny.gg/flairs/flairs.css");
 
     // flair2 is hidden, `commented` is a comment, the `.user` rules are not
-    // badges
-    ASSERT_EQ(flairs.size(), 3U);
+    // badges: what is left is flair4, bot, flair33 and flair127
+    ASSERT_EQ(flairs.size(), 4U);
 
     EXPECT_EQ(flairs[0].name, "flair4");
     EXPECT_EQ(flairs[0].label, "flair4");

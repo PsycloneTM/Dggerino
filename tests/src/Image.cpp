@@ -75,8 +75,11 @@ TEST(Image, CachedFramesUseSharedTimer)
     ASSERT_EQ(frames.frameSize(), QSize(1, 1));
 
     auto *timer = app.emotes.getGIFTimer();
+    // the animation follows the shared clock, so step it like a tick would
+    timer->advance(GIF_FRAME_LENGTH);
     timer->signal.invoke();
     EXPECT_TRUE(hasColor(frames, Qt::red));
+    timer->advance(GIF_FRAME_LENGTH);
     timer->signal.invoke();
     EXPECT_TRUE(hasColor(frames, Qt::blue));
     EXPECT_EQ(frames.frameSize(), QSize(1, 1));

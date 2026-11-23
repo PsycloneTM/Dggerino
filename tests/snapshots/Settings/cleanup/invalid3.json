@@ -105,6 +105,27 @@
                 },
                 {
                     "id": "lowtrustuser"
+                },
+                {
+                    "id": "dggsubscription"
+                },
+                {
+                    "id": "dgggift"
+                },
+                {
+                    "id": "dggdonation"
+                },
+                {
+                    "id": "dggspotlight"
+                },
+                {
+                    "id": "dggbroadcast"
+                },
+                {
+                    "id": "dggxpost"
+                },
+                {
+                    "id": "dggvestaboard"
                 }
             ]
         },
