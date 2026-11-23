@@ -256,7 +256,7 @@ int dggLearnSiteImages(const QByteArray &page, const QUrl &pageUrl)
     {
         const auto m = matches.next();
         Found f{m.captured(1), m.captured(2),
-                m.captured(2) + u'.' + m.captured(3) + u".png"};
+                m.captured(2) + u'.' + m.captured(3) + u".png"_s};
         if (commonPrefix.isEmpty() && !f.prefix.isEmpty())
         {
             commonPrefix = f.prefix;
