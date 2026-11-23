@@ -55,6 +55,13 @@ jobs:
       - name: Enable Developer Command Prompt
         uses: Chatterino/msvc-dev-cmd@24444121cb2805a7adbd23d0f4455d0916af896b # v2.0.7
 
+      # The runner's preinstalled LLVM (20.x) is rejected by the newer MSVC STL
+      # (STL1000: "expected Clang 22 or newer"), same as in build.yml.
+      - name: Install Clang
+        uses: Nerixyz/install-llvm-action@4af87402e075801cb1ba829dcee5bfafdc733616
+        with:
+          version: 22
+
       - name: Setup sccache
         # sccache v0.7.4
         uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
