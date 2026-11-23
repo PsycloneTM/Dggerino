@@ -36,7 +36,7 @@ If you have issues such as crashes or weird behaviour regarding Dgg features, re
 
 ### Discord
 
-If you don't have a GitHub account and want to report issues or want to join the community you can join the DGG Discord using the link here: <https://discord.com/invite/dgg>.
+If you don't have a GitHub account and want to report issues or want to join the community you can join the DGG Discord using the link here: <https://discord.com/invite/destiny>.
 
 ### AVIF Support
 
