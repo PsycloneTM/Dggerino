@@ -155,7 +155,7 @@ void Updates::installUpdates()
     {
         // Since Nightly builds can be installed in many different ways, we ask the user to download the update manually.
         QDesktopServices::openUrl(
-            QUrl("https://github.com/SevenTV/chatterino7/releases"));
+            QUrl("https://github.com/PsycloneTM/dggerino/releases"));
         return;
     }
 
@@ -544,13 +544,13 @@ QString Updates::buildUpdateAvailableText() const
                        "The version online (%1) seems to be lower than the "
                        "current (%2).\nEither a version was reverted or "
                        "you are running a newer build.\n\nDo you want to "
-                       "head to github.com/SevenTV/chatterino7 to download it?")
+                       "head to github.com/PsycloneTM/dggerino to download it?")
                 .arg(this->getOnlineVersion(), this->getCurrentVersion());
         }
 
         return QString(
                    "An update (%1) is available.\n\nDo you want to head to "
-                   "github.com/SevenTV/chatterino7 to download the new update?")
+                   "github.com/PsycloneTM/dggerino to download the new update?")
             .arg(this->getOnlineVersion());
     }
 
