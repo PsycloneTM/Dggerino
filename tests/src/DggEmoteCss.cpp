@@ -1185,8 +1185,8 @@ TEST(DggCssAnimation, NumberPrefix)
     number("1e+", 1, 1);
     number("0x10", 0, 1);
 
-    for (const char *text : {"", ".", "+", "-", "e3", "inf", "nan", "--1",
-                             "1e999"})
+    for (const char *text :
+         {"", ".", "+", "-", "e3", "inf", "nan", "--1", "1e999"})
     {
         size_t consumed = 0;
         EXPECT_FALSE(parseNumberPrefix(text, consumed).has_value()) << text;
@@ -1222,9 +1222,8 @@ TEST(DggCssAnimation, ContentEscapesThatAreNotCodePointsBecomeTheReplacement)
     const auto bytes = [](const char *css) {
         const auto parsed = dggcss::anim::parseDeclaration("content", css);
         EXPECT_TRUE(parsed.has_value()) << css;
-        return parsed
-                   ? std::get<dggcss::anim::Content>(parsed->second).text
-                   : std::string();
+        return parsed ? std::get<dggcss::anim::Content>(parsed->second).text
+                      : std::string();
     };
     const std::string replacement = "\xEF\xBF\xBD";
     EXPECT_EQ(bytes("'\\110000'"), replacement);
@@ -1247,8 +1246,8 @@ TEST(DggCssAnimation, HugeIterationCountIsNotAPlayCount)
     const auto animation = Animation::build((*specs)[0], keyframes, problem);
     ASSERT_TRUE(animation.has_value()) << problem;
 
-    const auto baked = bake({*animation}, Computed{}, Box{32, 32},
-                            BakeOptions{}, problem);
+    const auto baked =
+        bake({*animation}, Computed{}, Box{32, 32}, BakeOptions{}, problem);
     ASSERT_TRUE(baked.has_value()) << problem;
     EXPECT_GE(baked->plays, 0);
     EXPECT_TRUE(baked->truncated);
@@ -1256,14 +1255,14 @@ TEST(DggCssAnimation, HugeIterationCountIsNotAPlayCount)
 
 TEST(DggEmoteCss, ABrokenStringDoesNotSwallowTheRestOfTheStylesheet)
 {
-    const DggEmoteCss sheet = DggEmoteCss::parse(QStringLiteral(
-        ".emote.Broken::after {\n"
-        "    content: 'oops;\n"
-        "}\n"
-        ".emote.Fine {\n"
-        "    background-image: url(\"fine.png\");\n"
-        "    height: 32px;\n"
-        "    width: 64px;\n"
-        "}\n"));
+    const DggEmoteCss sheet = DggEmoteCss::parse(
+        QStringLiteral(".emote.Broken::after {\n"
+                       "    content: 'oops;\n"
+                       "}\n"
+                       ".emote.Fine {\n"
+                       "    background-image: url(\"fine.png\");\n"
+                       "    height: 32px;\n"
+                       "    width: 64px;\n"
+                       "}\n"));
     EXPECT_TRUE(sheet.hasEmote(QStringLiteral("Fine")));
 }
