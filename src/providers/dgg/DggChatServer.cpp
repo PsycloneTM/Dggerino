@@ -606,6 +606,23 @@ void DggChatServer::sendChatMessage(DggChannel &chan, const QString &rawText)
         return;
     }
 
+    // `/die` (aliases `/suicide` and `/bitly`): mutes yourself for 10 minutes.
+    // chat-gui sends a `DIE` frame with empty data; the server answers with a
+    // `DEATH` event, which is drawn like on the site.
+    static const QRegularExpression dieCommand(
+        QStringLiteral(R"(^/(?:die|suicide|bitly)(?:\s.*)?$)"),
+        QRegularExpression::CaseInsensitiveOption |
+            QRegularExpression::DotMatchesEverythingOption);
+    if (dieCommand.match(text).hasMatch())
+    {
+        if (!this->socket_ ||
+            !this->socket_->send("DIE", QJsonObject{{"data"_L1, QString()}}))
+        {
+            say("notconnected");
+        }
+        return;
+    }
+
     // Like chat-gui, a slash command is never sent as a message (`/me` is the
     // only one the server sees).
     static const QRegularExpression slashCommand(

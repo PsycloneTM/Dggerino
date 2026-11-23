@@ -284,6 +284,8 @@ bool isDggOwnCommand(const QString &name)
         QStringLiteral("/notify"),  QStringLiteral("/ignore"),
         QStringLiteral("/unignore"), QStringLiteral("/unignoreall"),
         QStringLiteral("/mentions"), QStringLiteral("/m"),
+        QStringLiteral("/die"),      QStringLiteral("/suicide"),
+        QStringLiteral("/bitly"),
     };
     return names.contains(name, Qt::CaseInsensitive);
 }
