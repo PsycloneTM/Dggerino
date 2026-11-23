@@ -58,8 +58,8 @@ bool DggAccount::update(const DggAccountData &data)
 {
     bool changed = false;
 
-    if (QString::compare(this->username_, data.username,
-                         Qt::CaseInsensitive) != 0)
+    if (QString::compare(this->username_, data.username, Qt::CaseInsensitive) !=
+        0)
     {
         changed = true;
         this->username_ = data.username.toLower();

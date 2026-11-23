@@ -170,20 +170,20 @@ void fadeComboSplat(std::weak_ptr<DggChannel> weak, DggComboLine line,
                     MessagePtr shown)
 {
     static constexpr int GREY_AFTER_MS = 3000;
-    QTimer::singleShot(
-        GREY_AFTER_MS, qApp,
-        [weak = std::move(weak), line = std::move(line),
-         shown = std::move(shown)]() mutable {
-            auto chan = weak.lock();
-            if (!chan)
-            {
-                return;
-            }
-            line.splatGrey = 100;
-            const MessagePtr replacement =
-                DggMessageBuilder::makeComboMessage(chan.get(), line);
-            chan->replaceMessage(shown, replacement);
-        });
+    QTimer::singleShot(GREY_AFTER_MS, qApp,
+                       [weak = std::move(weak), line = std::move(line),
+                        shown = std::move(shown)]() mutable {
+                           auto chan = weak.lock();
+                           if (!chan)
+                           {
+                               return;
+                           }
+                           line.splatGrey = 100;
+                           const MessagePtr replacement =
+                               DggMessageBuilder::makeComboMessage(chan.get(),
+                                                                   line);
+                           chan->replaceMessage(shown, replacement);
+                       });
 }
 
 /// Reads the stylesheets one after the other until the icon sheet is known,
@@ -471,8 +471,7 @@ void DggChatServer::onSocketClosed(std::chrono::milliseconds retryIn)
     {
         chan->addSystemMessage(
             u"Disconnected from destiny.gg chat. Reconnecting in %1 seconds..."_s
-                .arg(static_cast<double>(retryIn.count()) / 1000.0, 0, 'f',
-                     1));
+                .arg(static_cast<double>(retryIn.count()) / 1000.0, 0, 'f', 1));
     }
     else
     {
@@ -599,8 +598,7 @@ void DggChatServer::sendChatMessage(DggChannel &chan, const QString &rawText)
         QStringLiteral(R"(^/(?:mentions|m)(?:\s+(.*))?$)"),
         QRegularExpression::CaseInsensitiveOption |
             QRegularExpression::DotMatchesEverythingOption);
-    if (const auto mentions = mentionsCommand.match(text);
-        mentions.hasMatch())
+    if (const auto mentions = mentionsCommand.match(text); mentions.hasMatch())
     {
         this->fetchMentions(chan, mentions.captured(1));
         return;
@@ -697,11 +695,10 @@ void DggChatServer::sendWhisper(DggChannel &chan, const QString &rawNick,
         return;
     }
 
-    if (!this->socket_ || !this->socket_->send("PRIVMSG",
-                                               QJsonObject{
-                                                   {"nick"_L1, nick},
-                                                   {"data"_L1, text},
-                                               }))
+    if (!this->socket_ || !this->socket_->send("PRIVMSG", QJsonObject{
+                                                              {"nick"_L1, nick},
+                                                              {"data"_L1, text},
+                                                          }))
     {
         say("notconnected");
         return;
@@ -813,9 +810,9 @@ void DggChatServer::fetchMentions(DggChannel &chan, const QString &args)
                 line.isAction =
                     mention.text.startsWith(u"/me "_s, Qt::CaseInsensitive);
                 line.text = line.isAction ? mention.text.mid(4) : mention.text;
-                line.greentext = line.text.startsWith(u'>') &&
-                                 (line.user.isSubscriber() ||
-                                  line.user.isPrivileged());
+                line.greentext =
+                    line.text.startsWith(u'>') &&
+                    (line.user.isSubscriber() || line.user.isPrivileged());
                 line.timestampMs = mention.timestampMs;
                 // Not the hash of the original line: this one must not be
                 // taken for it (a spotlight finds its line by that id).
@@ -859,8 +856,8 @@ void DggChatServer::castPollVote(DggChannel &chan, int option)
 
     // the server wants the number as a string, like chat-gui sends it
     if (!this->socket_ ||
-        !this->socket_->send(
-            "CASTVOTE", QJsonObject{{"vote"_L1, QString::number(option)}}))
+        !this->socket_->send("CASTVOTE",
+                             QJsonObject{{"vote"_L1, QString::number(option)}}))
     {
         say("notconnected");
     }
@@ -938,8 +935,8 @@ void DggChatServer::handleFrame(const DggFrame &frame)
 
         const auto timestampMs = dggTimestampMs(obj, nowMs);
         const auto key = u"%1|%2|%3|%4"_s.arg(
-            name, QString::number(timestampMs),
-            obj.value("data"_L1).toString(), obj.value("nick"_L1).toString());
+            name, QString::number(timestampMs), obj.value("data"_L1).toString(),
+            obj.value("nick"_L1).toString());
         if (!chan->markSeen(key))
         {
             return;
@@ -983,9 +980,9 @@ void DggChatServer::handleFrame(const DggFrame &frame)
             return;
         }
 
-        const auto key = u"DEATH|%1|%2|%3"_s.arg(
-            QString::number(death->timestampMs), death->user.nick,
-            death->cause);
+        const auto key =
+            u"DEATH|%1|%2|%3"_s.arg(QString::number(death->timestampMs),
+                                    death->user.nick, death->cause);
         if (!chan->markSeen(key))
         {
             return;
@@ -1009,9 +1006,8 @@ void DggChatServer::handleFrame(const DggFrame &frame)
 
         const auto timestampMs = dggTimestampMs(obj, nowMs);
         const auto uuid = obj.value("uuid"_L1).toString();
-        const auto key =
-            u"BROADCAST|%1|%2"_s.arg(uuid.isEmpty() ? text : uuid,
-                                      QString::number(timestampMs));
+        const auto key = u"BROADCAST|%1|%2"_s.arg(uuid.isEmpty() ? text : uuid,
+                                                  QString::number(timestampMs));
         if (!chan->markSeen(key))
         {
             return;
@@ -1036,18 +1032,18 @@ void DggChatServer::handleFrame(const DggFrame &frame)
             return;
         }
 
-        const auto id = post->uuid.isEmpty()
-                            ? u"%1|%2"_s.arg(QString::number(post->timestampMs),
-                                             post->url)
-                            : post->uuid;
+        const auto id =
+            post->uuid.isEmpty()
+                ? u"%1|%2"_s.arg(QString::number(post->timestampMs), post->url)
+                : post->uuid;
         if (!chan->markSeen(u"XPOST|%1"_s.arg(id)))
         {
             return;
         }
 
         this->endCombo(*chan);
-        auto [message, alert] =
-            DggMessageBuilder::makeXPostMessage(chan.get(), *post, frame.backlog);
+        auto [message, alert] = DggMessageBuilder::makeXPostMessage(
+            chan.get(), *post, frame.backlog);
         if (!frame.backlog)
         {
             MessageBuilder::triggerHighlights(chan.get(), alert);
@@ -1096,7 +1092,7 @@ void DggChatServer::handleFrame(const DggFrame &frame)
         const auto id =
             event->uuid.isEmpty()
                 ? u"%1|%2|%3"_s.arg(QString::number(event->timestampMs),
-                                     event->user.nick, event->text)
+                                    event->user.nick, event->text)
                 : event->uuid;
         if (!chan->markSeen(u"EVENT|%1|%2"_s.arg(name, id)))
         {
@@ -1118,8 +1114,7 @@ void DggChatServer::handleFrame(const DggFrame &frame)
             !event->messageKey.isEmpty())
         {
             original = chan->findMessageByID(event->messageKey);
-            if (original &&
-                original->loginName != event->user.nick.toLower())
+            if (original && original->loginName != event->user.nick.toLower())
             {
                 original.reset();
             }
@@ -1196,9 +1191,8 @@ void DggChatServer::handleFrame(const DggFrame &frame)
         {
             this->endCombo(*chan);
             chan->addMessage(
-                DggMessageBuilder::makePinMessage(chan.get(), pin,
-                                                  frame.backlog,
-                                                  *this->assets_),
+                DggMessageBuilder::makePinMessage(
+                    chan.get(), pin, frame.backlog, *this->assets_),
                 MessageContext::Original);
         }
     }
@@ -1239,10 +1233,9 @@ void DggChatServer::handleFrame(const DggFrame &frame)
         }
         chan->setOnlineUsers(users);
         this->endCombo(*chan);
-        chan->addSystemMessage(
-            u"Serving %1 connections and %2 users."_s
-                .arg(obj.value("connectioncount"_L1).toInt())
-                .arg(obj.value("usercount"_L1).toInt()));
+        chan->addSystemMessage(u"Serving %1 connections and %2 users."_s
+                                   .arg(obj.value("connectioncount"_L1).toInt())
+                                   .arg(obj.value("usercount"_L1).toInt()));
     }
     else if (name == "ME"_L1)
     {

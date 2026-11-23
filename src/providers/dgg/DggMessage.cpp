@@ -9,8 +9,8 @@
 #include <QUrlQuery>
 
 #include <algorithm>
-#include <vector>
 #include <limits>
+#include <vector>
 
 namespace chatterino {
 
@@ -154,10 +154,8 @@ DggUser DggUser::fromJson(const QJsonObject &obj)
     user.features = toStringList(obj.value("features"_L1));
     // `subscription` is null for users without one, which toObject() turns
     // into an empty object (tier 0).
-    user.subTier = obj.value("subscription"_L1)
-                       .toObject()
-                       .value("tier"_L1)
-                       .toInt();
+    user.subTier =
+        obj.value("subscription"_L1).toObject().value("tier"_L1).toInt();
     user.patreonMember = obj.value("patreonMember"_L1).toBool();
     user.photo = obj.value("photo"_L1).toString();
     user.createdDate = QDateTime::fromString(
@@ -210,7 +208,8 @@ QUrl dggUserInfoUrl(const QString &nick)
 
 QUrl dggProfileUrl(const QString &nick)
 {
-    return dggSiteUrl(u"/u/"_s + QString::fromUtf8(QUrl::toPercentEncoding(nick)));
+    return dggSiteUrl(u"/u/"_s +
+                      QString::fromUtf8(QUrl::toPercentEncoding(nick)));
 }
 
 QUrl dggBigscreenUrl(const QString &platform, const QString &id)
@@ -477,7 +476,8 @@ std::optional<DggEvent> parseDggEvent(QStringView name, const QJsonObject &obj,
     event.user = DggUser::fromJson(obj.value("user"_L1).toObject());
     if (event.kind == DggEvent::Kind::GiftSub)
     {
-        event.recipient = DggUser::fromJson(obj.value("recipient"_L1).toObject());
+        event.recipient =
+            DggUser::fromJson(obj.value("recipient"_L1).toObject());
     }
     if (event.kind == DggEvent::Kind::Spotlight && event.user.nick.isEmpty())
     {
@@ -500,8 +500,7 @@ std::optional<DggEvent> parseDggEvent(QStringView name, const QJsonObject &obj,
     event.uuid = obj.value("uuid"_L1).toString();
     event.timestampMs = dggTimestampMs(obj, nowMs);
 
-    if (event.kind == DggEvent::Kind::GiftSub &&
-        event.recipient.nick.isEmpty())
+    if (event.kind == DggEvent::Kind::GiftSub && event.recipient.nick.isEmpty())
     {
         return std::nullopt;
     }
@@ -579,8 +578,8 @@ std::optional<DggPoll> parseDggPollStart(const QJsonObject &obj, qint64 nowMs)
         poll.totals[static_cast<size_t>(i)] = total;
         sum += total;
     }
-    poll.votesCast = std::max<qint64>(
-        0, toLooseInt64(obj.value("totalvotes"_L1), sum));
+    poll.votesCast =
+        std::max<qint64>(0, toLooseInt64(obj.value("totalvotes"_L1), sum));
 
     poll.weighted = obj.value("weighted"_L1).toBool();
     poll.hidden = obj.value("hidden"_L1).toBool();
@@ -601,8 +600,8 @@ std::optional<DggPoll> parseDggPollStart(const QJsonObject &obj, qint64 nowMs)
     const auto startMs = toDateMs(obj.value("start"_L1), nowMs);
     const auto serverNowMs = toDateMs(obj.value("now"_L1), nowMs);
     const auto offsetMs = serverNowMs - nowMs;
-    poll.id = u"%1|%2|%3"_s.arg(poll.nick, QString::number(startMs),
-                                poll.question);
+    poll.id =
+        u"%1|%2|%3"_s.arg(poll.nick, QString::number(startMs), poll.question);
     poll.startedAtMs = startMs - offsetMs;
     poll.endsAtMs = poll.startedAtMs + poll.durationMs;
     return poll;
@@ -634,8 +633,8 @@ DggPollVote parseDggPollVote(const QJsonObject &obj)
     DggPollVote vote;
     vote.option = static_cast<int>(
         std::max<qint64>(0, toLooseInt64(obj.value("vote"_L1), 0)));
-    vote.quantity = std::max<qint64>(
-        0, toLooseInt64(obj.value("quantity"_L1), 1));
+    vote.quantity =
+        std::max<qint64>(0, toLooseInt64(obj.value("quantity"_L1), 1));
     return vote;
 }
 
@@ -797,8 +796,8 @@ QString dggErrorText(const QJsonObject &obj)
         if (seconds > 0)
         {
             return u"You are temporarily muted! You can chat again in %1. "
-                   u"Subscribe or donate to remove the mute immediately."_s
-                .arg(durationText(seconds));
+                   u"Subscribe or donate to remove the mute immediately."_s.arg(
+                       durationText(seconds));
         }
         return u"You are temporarily muted! Subscribe or donate to remove "
                u"the mute immediately."_s;

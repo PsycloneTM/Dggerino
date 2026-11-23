@@ -213,8 +213,7 @@ void appendPlainWord(DggMessageBuilder &builder, QStringView word,
             {
                 // the punctuation sits right behind the name
                 element->setTrailingSpace(false);
-                builder.emplace<TextElement>(trailing,
-                                             MessageElementFlag::Text,
+                builder.emplace<TextElement>(trailing, MessageElementFlag::Text,
                                              textColor);
             }
             return;
@@ -347,8 +346,7 @@ int countChatUserSpans(QStringView word, const DggChannel *channel)
 }
 
 TextElements collectElements(const QStringList &words, const DggUser &user,
-                             const DggAssets &assets,
-                             const DggChannel *channel)
+                             const DggAssets &assets, const DggChannel *channel)
 {
     TextElements out;
     for (const auto &word : words)
@@ -429,15 +427,16 @@ TextElement *emplaceHeaderText(DggMessageBuilder &builder, const QString &text,
         // The layout only looks for the rainbow flag on the element, and the
         // view never has it, so such an element can't need all of its flags:
         // with a message it sits on the header flag alone.
-        flags = header.hasContent
-                    ? MessageElementFlags{MessageElementFlag::SubscriptionHeader,
-                                          MessageElementFlag::DggRainbowUsername}
-                    : base | MessageElementFlag::DggRainbowUsername;
+        flags =
+            header.hasContent
+                ? MessageElementFlags{MessageElementFlag::SubscriptionHeader,
+                                      MessageElementFlag::DggRainbowUsername}
+                : base | MessageElementFlag::DggRainbowUsername;
         exhaustive = false;
     }
 
-    auto *element = builder.emplace<TextElement>(text, flags, color,
-                                                 FontStyle::ChatMedium);
+    auto *element =
+        builder.emplace<TextElement>(text, flags, color, FontStyle::ChatMedium);
     element->exhaustiveFlags = exhaustive;
     return element;
 }
@@ -474,10 +473,11 @@ QString appendEventName(DggMessageBuilder &builder, const DggUser &user,
     if (style.rainbow)
     {
         // see emplaceHeaderText(): the rainbow flag is only on the element
-        flags = header.hasContent
-                    ? MessageElementFlags{MessageElementFlag::SubscriptionHeader,
-                                          MessageElementFlag::DggRainbowUsername}
-                    : flags | MessageElementFlag::DggRainbowUsername;
+        flags =
+            header.hasContent
+                ? MessageElementFlags{MessageElementFlag::SubscriptionHeader,
+                                      MessageElementFlag::DggRainbowUsername}
+                : flags | MessageElementFlag::DggRainbowUsername;
         exhaustive = false;
     }
 
@@ -602,8 +602,8 @@ DggUser userNamed(const DggChannel *channel, const QString &nick)
 TextElement *emplaceLinkText(DggMessageBuilder &builder, const QString &text,
                              const QString &url)
 {
-    auto *element = builder.emplace<TextElement>(
-        text, MessageElementFlag::Text, MessageColor::Link);
+    auto *element = builder.emplace<TextElement>(text, MessageElementFlag::Text,
+                                                 MessageColor::Link);
     element->setLink(Link(Link::Url, url));
     return element;
 }
@@ -621,18 +621,20 @@ QPixmap vestaboardPixmap(const std::vector<std::vector<int>> &rows)
 {
     // spot colours, like `_vestaboard.scss`
     static const std::map<int, QColor> COLORS{
-        {63, QColor(QRgb(0xe5484d))}, {64, QColor(QRgb(0xf2851f))}, {65, QColor(QRgb(0xf5c518))},
-        {66, QColor(QRgb(0x1fbf75))}, {67, QColor(QRgb(0x0090ff))}, {68, QColor(QRgb(0x6e6ade))},
-        {69, QColor(QRgb(0xedeef0))}, {70, QColor(QRgb(0x0a0b0d))}, {71, QColor(QRgb(0x777b84))},
+        {63, QColor(QRgb(0xe5484d))}, {64, QColor(QRgb(0xf2851f))},
+        {65, QColor(QRgb(0xf5c518))}, {66, QColor(QRgb(0x1fbf75))},
+        {67, QColor(QRgb(0x0090ff))}, {68, QColor(QRgb(0x6e6ade))},
+        {69, QColor(QRgb(0xedeef0))}, {70, QColor(QRgb(0x0a0b0d))},
+        {71, QColor(QRgb(0x777b84))},
     };
     static const QString PUNCTUATION = [] {
         // codes 37 to 60; the gaps are tiles the board doesn't print
         QString chars(24, QChar(u' '));
         const std::map<int, QChar> known{
-            {37, u'!'}, {38, u'@'}, {39, u'#'}, {40, u'$'}, {41, u'('},
-            {42, u')'}, {44, u'-'}, {46, u'+'}, {47, u'&'}, {48, u'='},
+            {37, u'!'}, {38, u'@'}, {39, u'#'},  {40, u'$'}, {41, u'('},
+            {42, u')'}, {44, u'-'}, {46, u'+'},  {47, u'&'}, {48, u'='},
             {49, u';'}, {50, u':'}, {52, u'\''}, {53, u'"'}, {54, u'%'},
-            {55, u','}, {56, u'.'}, {59, u'/'}, {60, u'?'},
+            {55, u','}, {56, u'.'}, {59, u'/'},  {60, u'?'},
         };
         for (const auto &[code, ch] : known)
         {
@@ -676,8 +678,8 @@ QPixmap vestaboardPixmap(const std::vector<std::vector<int>> &rows)
         for (int c = 0; c < static_cast<int>(rows[r].size()); c++)
         {
             const int code = rows[r][c];
-            const QRectF tile(GAP + c * (TILE_W + GAP), GAP + r * (TILE_H + GAP),
-                              TILE_W, TILE_H);
+            const QRectF tile(GAP + c * (TILE_W + GAP),
+                              GAP + r * (TILE_H + GAP), TILE_W, TILE_H);
             painter.setPen(Qt::NoPen);
             painter.setBrush(QColor(QRgb(0x1a1b1f)));
             painter.drawRoundedRect(tile, 1.5, 1.5);
@@ -907,8 +909,8 @@ MessagePtrMut DggMessageBuilder::makeChatMessage(DggChannel *channel,
         if (received)
         {
             const auto account = getApp()->getAccounts()->dgg.current();
-            otherNick = account->isAnonymous() ? QString{}
-                                               : account->username();
+            otherNick =
+                account->isAnonymous() ? QString{} : account->username();
         }
         else
         {
@@ -937,8 +939,7 @@ MessagePtrMut DggMessageBuilder::makeChatMessage(DggChannel *channel,
     emoteContext.greentext = msg.greentext;
 
     const QString simplified = msg.text.simplified();
-    const QStringList words =
-        simplified.split(QChar(u' '), Qt::SkipEmptyParts);
+    const QStringList words = simplified.split(QChar(u' '), Qt::SkipEmptyParts);
     const auto elements = collectElements(words, msg.user, assets, channel);
     emoteContext.elements = elements.names;
 
@@ -970,10 +971,9 @@ MessagePtrMut DggMessageBuilder::makeChatMessage(DggChannel *channel,
         // Your own lines never highlight (they come back from the server
         // like everyone else's)
         const auto account = getApp()->getAccounts()->dgg.current();
-        const bool self =
-            !account->isAnonymous() &&
-            msg.user.nick.compare(account->username(), Qt::CaseInsensitive) ==
-                0;
+        const bool self = !account->isAnonymous() &&
+                          msg.user.nick.compare(account->username(),
+                                                Qt::CaseInsensitive) == 0;
 
         MessageParseArgs args;
         args.isReceivedWhisper = receivedWhisper;
@@ -1051,9 +1051,8 @@ MessagePtrMut DggMessageBuilder::makeComboMessage(DggChannel *channel,
     const auto countFont = FontStyle::ChatMediumBold;
     // the count sits about 2 px closer to the X (`letter-spacing: -0.05em`)
     builder
-        .emplace<TextElement>(QString::number(combo.count),
-                              bodyFlags, MessageColor::Text,
-                              countFont)
+        .emplace<TextElement>(QString::number(combo.count), bodyFlags,
+                              MessageColor::Text, countFont)
         ->setTrailingSpace(false);
     builder.emplace<ImageElement>(comboSpacer(2), MessageElementFlag::Text)
         ->setTrailingSpace(false);
@@ -1063,8 +1062,7 @@ MessagePtrMut DggMessageBuilder::makeComboMessage(DggChannel *channel,
     {
         // `.hit` is hidden and `.combo` shown once the combo is over
         builder.emplace<TextElement>(
-            QStringLiteral("C-C-C-COMBO"), bodyFlags,
-            MessageColor::Text,
+            QStringLiteral("C-C-C-COMBO"), bodyFlags, MessageColor::Text,
             step >= 10 ? FontStyle::ChatMediumBold : FontStyle::ChatMedium);
     }
     else
@@ -1074,8 +1072,8 @@ MessagePtrMut DggMessageBuilder::makeComboMessage(DggChannel *channel,
                                      FontStyle::ChatMediumItalic);
     }
 
-    const QString text = QStringLiteral("%1 x%2").arg(combo.emoteName).arg(
-        combo.count);
+    const QString text =
+        QStringLiteral("%1 x%2").arg(combo.emoteName).arg(combo.count);
     builder->messageText = text;
     builder->searchText = text;
 
@@ -1232,35 +1230,39 @@ MessagePtrMut DggMessageBuilder::makeDeathMessage(DggChannel *channel,
             for (const auto &item :
                  getApp()->getEmotes()->getEmojis()->parse(word))
             {
-                std::visit(
-                    variant::Overloaded{
-                        [&](const EmotePtr &emoji) {
-                            builder.emplace<EmoteElement>(
-                                emoji, MessageElementFlag::EmojiAll,
-                                MessageColor::Text);
-                        },
-                        [&](QStringView text) {
-                            builder.emplace<TextElement>(
-                                text.toString(), MessageElementFlag::Text,
-                                MessageColor::Text,
-                                FontStyle::ChatMediumItalic);
-                        },
-                    },
-                    item);
+                std::visit(variant::Overloaded{
+                               [&](const EmotePtr &emoji) {
+                                   builder.emplace<EmoteElement>(
+                                       emoji, MessageElementFlag::EmojiAll,
+                                       MessageColor::Text);
+                               },
+                               [&](QStringView text) {
+                                   builder.emplace<TextElement>(
+                                       text.toString(),
+                                       MessageElementFlag::Text,
+                                       MessageColor::Text,
+                                       FontStyle::ChatMediumItalic);
+                               },
+                           },
+                           item);
             }
         }
     }
 
-    const QString full = causeText.isEmpty() ? nick : nick + QChar(u' ') + causeText;
+    const QString full =
+        causeText.isEmpty() ? nick : nick + QChar(u' ') + causeText;
     builder->messageText = full;
     builder->searchText = full;
 
     return builder.release();
 }
 
-std::pair<MessagePtrMut, HighlightAlert> DggMessageBuilder::makeBroadcastMessage(
-    DggChannel *channel, const QDateTime &time, const DggUser &user,
-    const QString &text, bool backlog, const DggAssets &assets)
+std::pair<MessagePtrMut, HighlightAlert>
+    DggMessageBuilder::makeBroadcastMessage(DggChannel *channel,
+                                            const QDateTime &time,
+                                            const DggUser &user,
+                                            const QString &text, bool backlog,
+                                            const DggAssets &assets)
 {
     // Built like a Twitch announcement: a "Broadcast" header on its own line
     // (shown while "Show announcement header" is on), then the message. The
@@ -1276,12 +1278,11 @@ std::pair<MessagePtrMut, HighlightAlert> DggMessageBuilder::makeBroadcastMessage
     }
 
     builder
-        .emplace<TimestampElement>(
-            time.time(),
-            MessageElementFlags{
-                MessageElementFlag::HeaderTimestamp,
-                MessageElementFlag::AnnouncementHeader,
-            })
+        .emplace<TimestampElement>(time.time(),
+                                   MessageElementFlags{
+                                       MessageElementFlag::HeaderTimestamp,
+                                       MessageElementFlag::AnnouncementHeader,
+                                   })
         ->exhaustiveFlags = true;
     builder
         .emplace<TextElement>("Broadcast",
@@ -1422,9 +1423,9 @@ std::pair<MessagePtrMut, HighlightAlert> DggMessageBuilder::makeEventMessage(
             shown << appendEventWords(
                 builder,
                 QLocale(QLocale::English, QLocale::UnitedStates)
-                    .toCurrencyString(static_cast<double>(event.amountCents) /
-                                          100.0,
-                                      QStringLiteral("$")),
+                    .toCurrencyString(
+                        static_cast<double>(event.amountCents) / 100.0,
+                        QStringLiteral("$")),
                 header);
             break;
         case DggEvent::Kind::Spotlight:
@@ -1546,8 +1547,7 @@ std::pair<MessagePtrMut, HighlightAlert> DggMessageBuilder::makeXPostMessage(
 }
 
 MessagePtrMut DggMessageBuilder::makePinMessage(DggChannel *channel,
-                                                const DggPin &pin,
-                                                bool backlog,
+                                                const DggPin &pin, bool backlog,
                                                 const DggAssets &assets)
 {
     DggMessageBuilder builder(systemMessage, channel, pin.time());
@@ -1572,18 +1572,19 @@ MessagePtrMut DggMessageBuilder::makePinMessage(DggChannel *channel,
     shown << appendEventName(builder, user, assets, header);
     shown << appendEventWords(builder, QStringLiteral("pinned a message:"),
                               header);
-    const QString text =
-        appendEventMessageText(builder, pin.text, user, assets, channel,
-                               backlog);
+    const QString text = appendEventMessageText(builder, pin.text, user, assets,
+                                                channel, backlog);
 
     builder->messageText = text;
     builder->searchText = shown.join(QChar(u' ')) + QChar(u' ') + text;
     return builder.release();
 }
 
-std::pair<MessagePtrMut, HighlightAlert> DggMessageBuilder::makeVestaboardMessage(
-    DggChannel *channel, const DggVestaboard &board, bool backlog,
-    const DggAssets &assets)
+std::pair<MessagePtrMut, HighlightAlert>
+    DggMessageBuilder::makeVestaboardMessage(DggChannel *channel,
+                                             const DggVestaboard &board,
+                                             bool backlog,
+                                             const DggAssets &assets)
 {
     const QDateTime time = board.time();
     const EventHeader header{.hasContent = true};
@@ -1671,10 +1672,9 @@ std::pair<MessagePtrMut, HighlightAlert> DggMessageBuilder::makeVestaboardMessag
         builder.emplace<LinebreakElement>(MessageElementFlags{
             MessageElementFlag::Text,
         });
-        builder.emplace<TextElement>(QStringLiteral("Top contributors:"),
-                                     MessageElementFlag::Text,
-                                     MessageColor::System,
-                                     FontStyle::ChatMediumBold);
+        builder.emplace<TextElement>(
+            QStringLiteral("Top contributors:"), MessageElementFlag::Text,
+            MessageColor::System, FontStyle::ChatMediumBold);
         for (size_t i = 0; i < board.contributors.size(); i++)
         {
             const auto &contributor = board.contributors[i];
@@ -1695,8 +1695,8 @@ std::pair<MessagePtrMut, HighlightAlert> DggMessageBuilder::makeVestaboardMessag
     QString prompt;
     if (openHourly)
     {
-        prompt = QStringLiteral(
-            "Be the first. Submit a design to claim the board.");
+        prompt =
+            QStringLiteral("Be the first. Submit a design to claim the board.");
     }
     else
     {
@@ -1734,6 +1734,5 @@ std::pair<MessagePtrMut, HighlightAlert> DggMessageBuilder::makeVestaboardMessag
     const auto alert = processHighlights(builder, args);
     return {builder.release(), alert};
 }
-
 
 }  // namespace chatterino

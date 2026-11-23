@@ -58,7 +58,8 @@ QString toNewCdn(const QString &url)
     {
         return url;
     }
-    static const QRegularExpression version(QStringLiteral(R"(^/\d+\.\d+\.\d+(?=/))"));
+    static const QRegularExpression version(
+        QStringLiteral(R"(^/\d+\.\d+\.\d+(?=/))"));
     parsed.setHost(QStringLiteral("r2cdn.destiny.gg"));
     parsed.setPath(parsed.path().remove(version));
     return parsed.toString();
@@ -109,8 +110,8 @@ ImageSet imageSetFor(const DggImageRef &ref, const DggEmoteStyle &style)
         if (!size.isEmpty())
         {
             return ImageSet(Image::fromUrl(
-                Url{ref.url},
-                static_cast<qreal>(target.width()) / size.width(), size));
+                Url{ref.url}, static_cast<qreal>(target.width()) / size.width(),
+                size));
         }
     }
     if (style.valid && !style.isWholeImage(size))
@@ -210,25 +211,26 @@ void fetchFirst(std::shared_ptr<const std::vector<QString>> urls, size_t index,
 
     NetworkRequest(QUrl(url))
         .timeout(REQUEST_TIMEOUT_MS)
-        .onSuccess([weak, urls, index, url, onData, done](NetworkResult result) {
-            if (weak.expired())
-            {
-                return;
-            }
-            if (onData(std::move(result), url))
-            {
+        .onSuccess(
+            [weak, urls, index, url, onData, done](NetworkResult result) {
+                if (weak.expired())
+                {
+                    return;
+                }
+                if (onData(std::move(result), url))
+                {
+                    done();
+                    return;
+                }
+                // Answered, but with nothing we can use: try the next one
+                qCWarning(chatterinoDgg) << "Unusable answer from" << url;
+                if (index + 1 < urls->size())
+                {
+                    fetchFirst(urls, index + 1, weak, onData, done);
+                    return;
+                }
                 done();
-                return;
-            }
-            // Answered, but with nothing we can use: try the next one
-            qCWarning(chatterinoDgg) << "Unusable answer from" << url;
-            if (index + 1 < urls->size())
-            {
-                fetchFirst(urls, index + 1, weak, onData, done);
-                return;
-            }
-            done();
-        })
+            })
         .onError([weak, urls, index, url, onData, done](NetworkResult result) {
             if (weak.expired())
             {
@@ -278,8 +280,8 @@ void DggAssets::fetch(std::vector<QString> urls,
         this->alive_,
         [onData = std::move(onData)](NetworkResult result, const QString &url) {
             const auto json = result.parseJsonArray();
-            qCDebug(chatterinoDgg) << "Loaded" << url << json.size()
-                                   << "entries";
+            qCDebug(chatterinoDgg)
+                << "Loaded" << url << json.size() << "entries";
             if (json.isEmpty())
             {
                 return false;
@@ -453,9 +455,9 @@ void DggAssets::rebuildBadges()
     if (!this->flairCss_.isEmpty())
     {
         this->cssFlairs_ = parseDggFlairCss(this->flairCss_, cssBase);
-        qCDebug(chatterinoDgg) << "Loaded" << this->cssFlairs_.size()
-                               << "flair images from the stylesheet, base"
-                               << cssBase;
+        qCDebug(chatterinoDgg)
+            << "Loaded" << this->cssFlairs_.size()
+            << "flair images from the stylesheet, base" << cssBase;
     }
 
     // The stylesheet is the main source for badge images and their order.
@@ -491,7 +493,8 @@ void DggAssets::rebuildBadges()
     size_t fromManifest = 0;
     for (const auto &def : this->flairs_)
     {
-        if (def.image.isValid() && badges.emplace(def.name, makeBadge(def)).second)
+        if (def.image.isValid() &&
+            badges.emplace(def.name, makeBadge(def)).second)
         {
             fromManifest++;
         }
@@ -511,8 +514,8 @@ std::vector<DggAssets::MenuEmote> DggAssets::menuEmotes() const
     {
         if (entry.emote)
         {
-            out.push_back({entry.emote, entry.def.minimumSubTier,
-                           entry.def.patreonOnly});
+            out.push_back(
+                {entry.emote, entry.def.minimumSubTier, entry.def.patreonOnly});
         }
     }
     return out;

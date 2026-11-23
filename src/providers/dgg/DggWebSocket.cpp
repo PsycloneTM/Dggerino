@@ -322,10 +322,9 @@ void DggWebSocket::handleClose(uint64_t id)
 
     this->handle_ = WebSocketHandle{};
 
-    const bool stable =
-        this->openedAt_.has_value() &&
-        (std::chrono::steady_clock::now() - *this->openedAt_) >=
-            STABLE_CONNECTION;
+    const bool stable = this->openedAt_.has_value() &&
+                        (std::chrono::steady_clock::now() - *this->openedAt_) >=
+                            STABLE_CONNECTION;
     this->openedAt_.reset();
     if (stable)
     {

@@ -160,8 +160,9 @@ private:
     /// gets the URL that did.
     void fetch(std::vector<QString> urls,
                std::function<void(const QJsonArray &)> onData);
-    void fetchText(std::vector<QString> urls,
-                   std::function<void(const QString &, const QString &)> onData);
+    void fetchText(
+        std::vector<QString> urls,
+        std::function<void(const QString &, const QString &)> onData);
     void onFetchFinished();
     void applyEmotes(const QJsonArray &json);
     void applyFlairs(const QJsonArray &json);

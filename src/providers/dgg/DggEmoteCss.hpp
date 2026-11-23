@@ -107,8 +107,7 @@ struct DggEmoteStyle {
     bool isScaledWholeImage() const
     {
         return this->valid && !this->backgroundSize.isEmpty() &&
-               !this->sprite.hasPoses() &&
-               this->sprite.offsets.size() == 1 &&
+               !this->sprite.hasPoses() && this->sprite.offsets.size() == 1 &&
                this->sprite.offsets[0] == QPoint(0, 0) &&
                this->sprite.filters.empty();
     }

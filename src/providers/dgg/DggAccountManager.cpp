@@ -91,8 +91,8 @@ void DggAccountManager::reloadUsers()
             }
             break;
             case AddUserResponse::UserUpdated: {
-                qCDebug(chatterinoDgg) << "Account" << data->username
-                                       << "updated";
+                qCDebug(chatterinoDgg)
+                    << "Account" << data->username << "updated";
                 if (data->username == this->current()->username())
                 {
                     this->currentUserChanged.invoke();

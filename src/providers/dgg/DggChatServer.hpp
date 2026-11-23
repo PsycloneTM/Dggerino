@@ -15,8 +15,8 @@
 #include <chrono>
 #include <cstdint>
 #include <functional>
-#include <optional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 class QTimer;

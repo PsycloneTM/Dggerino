@@ -150,10 +150,10 @@ QString dggMentionsDateText(const QDateTime &time)
 {
     const QLocale english = QLocale::c();
     const auto date = time.date();
-    return u"%1 %2 %3, %4"_s
-        .arg(english.monthName(date.month(), QLocale::LongFormat),
-             dggOrdinal(date.day()), QString::number(date.year()),
-             english.toString(time.time(), u"h:mm:ss ap"_s));
+    return u"%1 %2 %3, %4"_s.arg(
+        english.monthName(date.month(), QLocale::LongFormat),
+        dggOrdinal(date.day()), QString::number(date.year()),
+        english.toString(time.time(), u"h:mm:ss ap"_s));
 }
 
 }  // namespace chatterino

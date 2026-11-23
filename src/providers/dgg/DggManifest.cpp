@@ -96,11 +96,11 @@ std::vector<DggFlairDef> parseDggFlairCss(const QString &css,
     // Only plain `.flair.<name> { ... }` rules. `.user.<name>` and the like
     // don't match because of the `.flair.` part.
     static const QRegularExpression rule(
-        QStringLiteral(R"((?<![A-Za-z0-9_-])\.flair\.([A-Za-z0-9_-]+)\s*\{([^}]*)\})"),
-        QRegularExpression::MultilineOption);
-    static const QRegularExpression image(
         QStringLiteral(
-            R"(background-image\s*:\s*url\(\s*["']?([^"')]+?)["']?\s*\))"));
+            R"((?<![A-Za-z0-9_-])\.flair\.([A-Za-z0-9_-]+)\s*\{([^}]*)\})"),
+        QRegularExpression::MultilineOption);
+    static const QRegularExpression image(QStringLiteral(
+        R"(background-image\s*:\s*url\(\s*["']?([^"')]+?)["']?\s*\))"));
     static const QRegularExpression width(
         QStringLiteral(R"((?:^|[;\s])width\s*:\s*(\d+)px)"));
     static const QRegularExpression height(
@@ -150,8 +150,8 @@ std::vector<DggFlairDef> parseDggFlairCss(const QString &css,
         }
         if (auto m = image.match(body); m.hasMatch())
         {
-            def.image.url = base.resolved(QUrl(m.captured(1).trimmed()))
-                                .toString();
+            def.image.url =
+                base.resolved(QUrl(m.captured(1).trimmed())).toString();
         }
         if (auto m = order.match(body); m.hasMatch())
         {

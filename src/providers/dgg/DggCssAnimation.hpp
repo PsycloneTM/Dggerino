@@ -325,8 +325,8 @@ std::optional<std::array<double, 4>> parseColorValue(std::string_view text);
 
 /// Parses one declaration. Returns nothing if the property isn't one of the
 /// supported ones or its value isn't understood.
-std::optional<std::pair<Prop, Value>> parseDeclaration(
-    std::string_view name, std::string_view value);
+std::optional<std::pair<Prop, Value>> parseDeclaration(std::string_view name,
+                                                       std::string_view value);
 
 /// An animation with its keyframes digested.
 class Animation
@@ -334,9 +334,9 @@ class Animation
 public:
     /// Why the animation can't be used, if it can't: a property that isn't
     /// supported, ...
-    static std::optional<Animation> build(const AnimationSpec &spec,
-                                          const std::vector<Keyframe> &keyframes,
-                                          std::string &problem);
+    static std::optional<Animation> build(
+        const AnimationSpec &spec, const std::vector<Keyframe> &keyframes,
+        std::string &problem);
 
     const AnimationSpec &spec() const
     {
@@ -449,7 +449,6 @@ Matrix matrixOf(const Computed &state, const Box &box);
 std::pair<double, double> originPx(const Origin &origin, const Box &box);
 
 /// A clip polygon in px; empty if there is none.
-std::vector<std::pair<double, double>> clipPx(const Clip &clip,
-                                              const Box &box);
+std::vector<std::pair<double, double>> clipPx(const Clip &clip, const Box &box);
 
 }  // namespace chatterino::dggcss::anim

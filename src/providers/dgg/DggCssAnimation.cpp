@@ -134,8 +134,7 @@ std::optional<double> parseNumber(string_view s)
     // strtod also takes "inf", "nan" and hex floats. CSS doesn't.
     for (const char c : text)
     {
-        if (std::isalpha(static_cast<unsigned char>(c)) && c != 'e' &&
-            c != 'E')
+        if (std::isalpha(static_cast<unsigned char>(c)) && c != 'e' && c != 'E')
         {
             return std::nullopt;
         }
@@ -270,8 +269,7 @@ std::optional<string_view> callArgs(string_view call, string_view name)
     {
         return std::nullopt;
     }
-    if (lower(call.substr(0, name.size())) != name ||
-        call[name.size()] != '(')
+    if (lower(call.substr(0, name.size())) != name || call[name.size()] != '(')
     {
         return std::nullopt;
     }
@@ -604,7 +602,8 @@ std::optional<TransformList> parseTransformList(string_view text)
         }
 
         const string name = lower(trim(text.substr(i, open - i)));
-        const auto args = splitTop(text.substr(open + 1, close - open - 1), ',');
+        const auto args =
+            splitTop(text.substr(open + 1, close - open - 1), ',');
         i = close + 1;
 
         TransformFn fn;
@@ -674,7 +673,8 @@ std::optional<TransformList> parseTransformList(string_view text)
             }
             else
             {
-                angle = args.size() == 1 ? parseAngleDeg(args[0]) : std::nullopt;
+                angle =
+                    args.size() == 1 ? parseAngleDeg(args[0]) : std::nullopt;
             }
             if (!angle)
             {
@@ -726,7 +726,8 @@ std::optional<TransformList> parseTransformList(string_view text)
             fn.kind = TransformFn::Kind::Skew;
             if (name == "skew")
             {
-                const auto x = args.empty() ? std::nullopt : parseAngleDeg(args[0]);
+                const auto x =
+                    args.empty() ? std::nullopt : parseAngleDeg(args[0]);
                 const auto y = args.size() > 1 ? parseAngleDeg(args[1])
                                                : std::optional<double>(0.0);
                 if (args.empty() || args.size() > 2 || !x || !y)
@@ -738,8 +739,8 @@ std::optional<TransformList> parseTransformList(string_view text)
             }
             else
             {
-                const auto v = args.size() == 1 ? parseAngleDeg(args[0])
-                                                : std::nullopt;
+                const auto v =
+                    args.size() == 1 ? parseAngleDeg(args[0]) : std::nullopt;
                 if (!v)
                 {
                     return std::nullopt;
@@ -803,8 +804,8 @@ std::optional<TransformList> parseIndividual(Prop prop, string_view text)
     else if (prop == Prop::Rotate)
     {
         fn.kind = TransformFn::Kind::Rotate;
-        const auto a = parts.size() == 1 ? parseAngleDeg(parts[0])
-                                         : std::nullopt;
+        const auto a =
+            parts.size() == 1 ? parseAngleDeg(parts[0]) : std::nullopt;
         if (!a)
         {
             return std::nullopt;
@@ -870,7 +871,8 @@ std::optional<FilterList> parseFilterList(string_view text)
                 {
                     lengths.push_back(length->value);
                 }
-                else if (const auto color = parseColor(token); color && !haveColor)
+                else if (const auto color = parseColor(token);
+                         color && !haveColor)
                 {
                     fn.rgba = *color;
                     haveColor = true;
@@ -893,8 +895,8 @@ std::optional<FilterList> parseFilterList(string_view text)
         if (name == "hue-rotate")
         {
             fn.kind = FilterKind::HueRotate;
-            const auto angle = arg.empty() ? std::optional<double>(0.0)
-                                           : parseAngleDeg(arg);
+            const auto angle =
+                arg.empty() ? std::optional<double>(0.0) : parseAngleDeg(arg);
             if (!angle)
             {
                 return std::nullopt;
@@ -1124,8 +1126,7 @@ Matrix matrixOfFn(const TransformFn &fn, const Box &box)
         case TransformFn::Kind::Skew:
             return Matrix::skew(fn.n[0], fn.n[1]);
         case TransformFn::Kind::Matrix:
-            return Matrix{fn.n[0], fn.n[1], fn.n[2],
-                          fn.n[3], fn.n[4], fn.n[5]};
+            return Matrix{fn.n[0], fn.n[1], fn.n[2], fn.n[3], fn.n[4], fn.n[5]};
     }
     return {};
 }
@@ -1178,7 +1179,8 @@ std::optional<Decomposed> decompose(const Matrix &m)
 
 Matrix recompose(const Decomposed &d)
 {
-    return Matrix::translate(d.tx, d.ty) * Matrix::rotate(d.angle * 180.0 / PI) *
+    return Matrix::translate(d.tx, d.ty) *
+           Matrix::rotate(d.angle * 180.0 / PI) *
            Matrix{1, 0, d.skew, 1, 0, 0} * Matrix::scale(d.sx, d.sy);
 }
 
@@ -1239,9 +1241,8 @@ TransformFn identityLike(const TransformFn &fn)
     return out;
 }
 
-TransformList lerpTransforms(const TransformList &from,
-                             const TransformList &to, double t,
-                             const Box &box)
+TransformList lerpTransforms(const TransformList &from, const TransformList &to,
+                             double t, const Box &box)
 {
     // The lists can be mixed if the shorter one is a prefix of the longer
     // one, function for function: it's padded with identities.
@@ -1269,8 +1270,8 @@ TransformList lerpTransforms(const TransformList &from,
 
     if (!compatible)
     {
-        const auto m = lerpMatrices(matrixOfList(from, box),
-                                    matrixOfList(to, box), t);
+        const auto m =
+            lerpMatrices(matrixOfList(from, box), matrixOfList(to, box), t);
         TransformFn fn;
         fn.kind = TransformFn::Kind::Matrix;
         fn.n = {m.a, m.b, m.c, m.d, m.e, m.f};
@@ -1281,8 +1282,7 @@ TransformList lerpTransforms(const TransformList &from,
     const size_t count = std::max(from.size(), to.size());
     for (size_t i = 0; i < count; i++)
     {
-        const TransformFn a =
-            i < from.size() ? from[i] : identityLike(to[i]);
+        const TransformFn a = i < from.size() ? from[i] : identityLike(to[i]);
         const TransformFn b = i < to.size() ? to[i] : identityLike(from[i]);
         TransformFn fn;
         fn.kind = a.kind;
@@ -1290,8 +1290,8 @@ TransformList lerpTransforms(const TransformList &from,
         {
             fn.x = Length{lerp(toPx(a.x, box.width), toPx(b.x, box.width), t),
                           false};
-            fn.y = Length{
-                lerp(toPx(a.y, box.height), toPx(b.y, box.height), t), false};
+            fn.y = Length{lerp(toPx(a.y, box.height), toPx(b.y, box.height), t),
+                          false};
         }
         else
         {
@@ -1402,17 +1402,16 @@ Value interpolateLenOrAuto(const Value &from, const Value &to, double t,
     }
     if (a.len.percent == b.len.percent)
     {
-        return LenOrAuto{false,
-                         Length{lerp(a.len.value, b.len.value, t),
-                                a.len.percent}};
+        return LenOrAuto{
+            false, Length{lerp(a.len.value, b.len.value, t), a.len.percent}};
     }
     if (!mixUnits)
     {
         return t < 0.5 ? from : to;
     }
-    return LenOrAuto{false, Length{lerp(toPx(a.len, reference),
-                                        toPx(b.len, reference), t),
-                                   false}};
+    return LenOrAuto{
+        false,
+        Length{lerp(toPx(a.len, reference), toPx(b.len, reference), t), false}};
 }
 
 Shadow blendShadows(const Shadow &a, const Shadow &b, double t)
@@ -1536,12 +1535,11 @@ Value interpolate(Prop prop, const Value &from, const Value &to, double t,
 }
 
 constexpr Prop ALL_PROPS[] = {
-    Prop::Transform, Prop::Translate, Prop::Rotate, Prop::Scale,
-    Prop::Opacity,   Prop::Filter,    Prop::Origin, Prop::Clip,
-    Prop::Left,      Prop::Right,     Prop::Top,    Prop::Bottom,
-    Prop::Width,     Prop::Height,    Prop::FontSize,
-    Prop::LineHeight, Prop::LetterSpacing, Prop::ContentText,
-    Prop::BoxShadow,
+    Prop::Transform,     Prop::Translate,   Prop::Rotate,    Prop::Scale,
+    Prop::Opacity,       Prop::Filter,      Prop::Origin,    Prop::Clip,
+    Prop::Left,          Prop::Right,       Prop::Top,       Prop::Bottom,
+    Prop::Width,         Prop::Height,      Prop::FontSize,  Prop::LineHeight,
+    Prop::LetterSpacing, Prop::ContentText, Prop::BoxShadow,
 };
 
 /// Declarations that are allowed in keyframes without doing anything.
@@ -1549,8 +1547,8 @@ bool isIgnorableKeyframeProperty(string_view name)
 {
     return name == "animation-timing-function" || name == "z-index" ||
            name == "will-change" || name == "pointer-events" ||
-           name == "mix-blend-mode" ||
-           startsWith(name, "-") || startsWith(name, "transition");
+           name == "mix-blend-mode" || startsWith(name, "-") ||
+           startsWith(name, "transition");
 }
 
 }  // namespace
@@ -1584,19 +1582,20 @@ Matrix Matrix::scale(double x, double y)
 
 Matrix Matrix::skew(double xDegrees, double yDegrees)
 {
-    return Matrix{1, std::tan(yDegrees * PI / 180.0),
-                  std::tan(xDegrees * PI / 180.0), 1, 0, 0};
+    return Matrix{1,
+                  std::tan(yDegrees * PI / 180.0),
+                  std::tan(xDegrees * PI / 180.0),
+                  1,
+                  0,
+                  0};
 }
 
 Matrix operator*(const Matrix &l, const Matrix &r)
 {
     return Matrix{
-        l.a * r.a + l.c * r.b,
-        l.b * r.a + l.d * r.b,
-        l.a * r.c + l.c * r.d,
-        l.b * r.c + l.d * r.d,
-        l.a * r.e + l.c * r.f + l.e,
-        l.b * r.e + l.d * r.f + l.f,
+        l.a * r.a + l.c * r.b,       l.b * r.a + l.d * r.b,
+        l.a * r.c + l.c * r.d,       l.b * r.c + l.d * r.d,
+        l.a * r.e + l.c * r.f + l.e, l.b * r.e + l.d * r.f + l.f,
     };
 }
 
@@ -1933,8 +1932,7 @@ std::optional<std::pair<Prop, Value>> parseDeclaration(string_view name,
         }
         if (v)
         {
-            return std::make_pair(Prop::Opacity,
-                                  Value(clamp(*v, 0.0, 1.0)));
+            return std::make_pair(Prop::Opacity, Value(clamp(*v, 0.0, 1.0)));
         }
     }
     else if (n == "filter")
@@ -2131,9 +2129,9 @@ void setProp(Computed &state, Prop prop, Value value)
 // Animation
 // ---------------------------------------------------------------------------
 
-std::optional<Animation> Animation::build(const AnimationSpec &spec,
-                                          const std::vector<Keyframe> &keyframes,
-                                          string &problem)
+std::optional<Animation> Animation::build(
+    const AnimationSpec &spec, const std::vector<Keyframe> &keyframes,
+    string &problem)
 {
     Animation out;
     out.spec_ = spec;
@@ -2179,9 +2177,10 @@ std::optional<Animation> Animation::build(const AnimationSpec &spec,
             }
 
             auto &[prop, value] = *parsed;
-            auto track = std::find_if(
-                out.tracks_.begin(), out.tracks_.end(),
-                [&](const auto &entry) { return entry.first == prop; });
+            auto track = std::find_if(out.tracks_.begin(), out.tracks_.end(),
+                                      [&](const auto &entry) {
+                                          return entry.first == prop;
+                                      });
             if (track == out.tracks_.end())
             {
                 out.tracks_.emplace_back(prop, std::vector<Stop>{});
@@ -2211,7 +2210,9 @@ std::optional<Animation> Animation::build(const AnimationSpec &spec,
 bool Animation::animates(Prop prop) const
 {
     return std::any_of(this->tracks_.begin(), this->tracks_.end(),
-                       [&](const auto &entry) { return entry.first == prop; });
+                       [&](const auto &entry) {
+                           return entry.first == prop;
+                       });
 }
 
 std::optional<double> Animation::progressAt(double timeMs) const
@@ -2223,10 +2224,12 @@ std::optional<double> Animation::progressAt(double timeMs) const
         return std::nullopt;
     }
 
-    const bool fillBackwards = this->spec_.fill == AnimationSpec::Fill::Backwards ||
-                               this->spec_.fill == AnimationSpec::Fill::Both;
-    const bool fillForwards = this->spec_.fill == AnimationSpec::Fill::Forwards ||
-                              this->spec_.fill == AnimationSpec::Fill::Both;
+    const bool fillBackwards =
+        this->spec_.fill == AnimationSpec::Fill::Backwards ||
+        this->spec_.fill == AnimationSpec::Fill::Both;
+    const bool fillForwards =
+        this->spec_.fill == AnimationSpec::Fill::Forwards ||
+        this->spec_.fill == AnimationSpec::Fill::Both;
 
     const double t = timeMs - this->spec_.delayMs;
     double iteration = 0;
@@ -2263,7 +2266,9 @@ std::optional<double> Animation::progressAt(double timeMs) const
         local = (t - iteration * d) / d;
     }
 
-    const auto odd = [&] { return std::fmod(iteration, 2.0) == 1.0; };
+    const auto odd = [&] {
+        return std::fmod(iteration, 2.0) == 1.0;
+    };
     bool reversed = false;
     switch (this->spec_.direction)
     {
@@ -2285,9 +2290,10 @@ std::optional<double> Animation::progressAt(double timeMs) const
 Value Animation::valueAt(Prop prop, double progress, const Computed &base,
                          const Box &box) const
 {
-    const auto track = std::find_if(
-        this->tracks_.begin(), this->tracks_.end(),
-        [&](const auto &entry) { return entry.first == prop; });
+    const auto track = std::find_if(this->tracks_.begin(), this->tracks_.end(),
+                                    [&](const auto &entry) {
+                                        return entry.first == prop;
+                                    });
     if (track == this->tracks_.end())
     {
         return getProp(base, prop);
@@ -2409,12 +2415,14 @@ std::optional<Baked> bake(const std::vector<Animation> &animations,
     }
 
     const auto &first = animations.front().spec();
-    const bool anyInfinite =
-        std::any_of(animations.begin(), animations.end(),
-                    [](const Animation &a) { return a.spec().infinite(); });
-    const bool allInfinite =
-        std::all_of(animations.begin(), animations.end(),
-                    [](const Animation &a) { return a.spec().infinite(); });
+    const bool anyInfinite = std::any_of(animations.begin(), animations.end(),
+                                         [](const Animation &a) {
+                                             return a.spec().infinite();
+                                         });
+    const bool allInfinite = std::all_of(animations.begin(), animations.end(),
+                                         [](const Animation &a) {
+                                             return a.spec().infinite();
+                                         });
 
     // Animations that all repeat the same cycle are baked as one cycle that
     // is played that often. That keeps `0.3s 50` (15 s) or `5s 20` (100 s)
@@ -2437,8 +2445,8 @@ std::optional<Baked> bake(const std::vector<Animation> &animations,
     }
 
     Baked out;
-    double total = 0;          // how much time is baked
-    double finishedAt = 0;     // when the CSS is done
+    double total = 0;       // how much time is baked
+    double finishedAt = 0;  // when the CSS is done
     if (periodic)
     {
         if (first.durationMs > options.maxMs)
@@ -2459,8 +2467,8 @@ std::optional<Baked> bake(const std::vector<Animation> &animations,
             {
                 continue;
             }
-            finishedAt = std::max(
-                finishedAt, std::max(0.0, s.delayMs) + s.durationMs * s.iterations);
+            finishedAt = std::max(finishedAt, std::max(0.0, s.delayMs) +
+                                                  s.durationMs * s.iterations);
         }
         total = finishedAt;
         if (total > options.maxMs)
@@ -2476,7 +2484,8 @@ std::optional<Baked> bake(const std::vector<Animation> &animations,
         return std::nullopt;
     }
 
-    const int count = static_cast<int>(std::ceil(total / options.stepMs - 1e-9));
+    const int count =
+        static_cast<int>(std::ceil(total / options.stepMs - 1e-9));
     out.frames.reserve(static_cast<size_t>(count));
     for (int k = 0; k < count; k++)
     {
@@ -2557,7 +2566,8 @@ std::optional<BakedLayers> bakeLayers(const std::vector<LayerInput> &layers,
         out.truncated = true;
     }
 
-    const int count = static_cast<int>(std::ceil(total / options.stepMs - 1e-9));
+    const int count =
+        static_cast<int>(std::ceil(total / options.stepMs - 1e-9));
     out.frames.reserve(static_cast<size_t>(count));
     for (int k = 0; k < count; k++)
     {

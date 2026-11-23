@@ -1,8 +1,8 @@
 #pragma once
 
 #include <QString>
-#include <QtGlobal>
 #include <QStringView>
+#include <QtGlobal>
 
 namespace chatterino {
 

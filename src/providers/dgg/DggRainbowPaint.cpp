@@ -6,11 +6,11 @@
 #include <QColor>
 #include <QGradient>
 #include <QHash>
+#include <QLinearGradient>
 #include <QPainter>
 #include <QPen>
-#include <QTextOption>
-#include <QLinearGradient>
 #include <QRectF>
+#include <QTextOption>
 
 #include <algorithm>
 #include <chrono>
@@ -50,9 +50,9 @@ public:
     QBrush asBrush(QColor /*userColor*/, QRectF drawingRect) const override
     {
         using namespace std::chrono;
-        const auto now = duration_cast<milliseconds>(
-                             steady_clock::now().time_since_epoch())
-                             .count();
+        const auto now =
+            duration_cast<milliseconds>(steady_clock::now().time_since_epoch())
+                .count();
         const double phase =
             static_cast<double>(now % CYCLE_MS) / static_cast<double>(CYCLE_MS);
 
@@ -65,9 +65,9 @@ public:
         for (int i = 0; i <= 8; i++)
         {
             // hsl(0), hsl(45), ..., hsl(360): the last is the first again
-            gradient.setColorAt(
-                i / 8.0, QColor::fromHslF(std::min(i * 45, 359) / 360.0F,
-                                          SATURATION, LIGHTNESS));
+            gradient.setColorAt(i / 8.0,
+                                QColor::fromHslF(std::min(i * 45, 359) / 360.0F,
+                                                 SATURATION, LIGHTNESS));
         }
         gradient.setColorAt(1.0, QColor::fromHslF(0.0F, SATURATION, LIGHTNESS));
         return QBrush(gradient);
@@ -106,8 +106,8 @@ struct RainbowMask {
     QRectF period;
 };
 
-RainbowMask makeRainbowMask(const QString &text, const QFont &font,
-                            QSizeF size, float dpr)
+RainbowMask makeRainbowMask(const QString &text, const QFont &font, QSizeF size,
+                            float dpr)
 {
     RainbowMask mask;
     mask.pixmap = QPixmap((size * dpr).toSize());
@@ -138,11 +138,11 @@ RainbowMask makeRainbowMask(const QString &text, const QFont &font,
     mask.period = bounds;
     if (text.size() > 1 && text.endsWith(QChar(u':')))
     {
-        mask.period.setWidth(
-            painter
-                .boundingRect(QRectF(0, 0, 10000, 10000),
-                              text.left(text.size() - 1), option)
-                .width());
+        mask.period.setWidth(painter
+                                 .boundingRect(QRectF(0, 0, 10000, 10000),
+                                               text.left(text.size() - 1),
+                                               option)
+                                 .width());
     }
 
     painter.setPen(Qt::white);

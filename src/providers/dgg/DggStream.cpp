@@ -114,8 +114,8 @@ std::optional<DggStreamInfo> parseDggStreamInfo(const QJsonObject &root)
         const auto preview = stream.value("preview"_L1).toString();
         if (!preview.isEmpty())
         {
-            const bool isWebp = QUrl(preview).path().endsWith(
-                u".webp"_s, Qt::CaseInsensitive);
+            const bool isWebp =
+                QUrl(preview).path().endsWith(u".webp"_s, Qt::CaseInsensitive);
             if (out.thumbnailUrl.isEmpty() || (!haveThumbnailJpg && !isWebp))
             {
                 out.thumbnailUrl = preview;

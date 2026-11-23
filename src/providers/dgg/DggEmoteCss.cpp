@@ -1,10 +1,9 @@
 #include "providers/dgg/DggEmoteCss.hpp"
 
-#include "providers/dgg/DggCssAnimation.hpp"
 #include "providers/dgg/DggCombo.hpp"
+#include "providers/dgg/DggCssAnimation.hpp"
 
 #include <algorithm>
-#include <regex>
 #include <array>
 #include <cctype>
 #include <charconv>
@@ -13,10 +12,11 @@
 #include <cstdlib>
 #include <numeric>
 #include <optional>
+#include <regex>
 #include <string_view>
-#include <variant>
 #include <system_error>
 #include <utility>
+#include <variant>
 
 namespace chatterino {
 
@@ -34,8 +34,7 @@ constexpr size_t NPOS = string::npos;
 constexpr int MAX_STEPS = 1000;
 
 using Props = std::unordered_map<string, string>;
-using Keyframes =
-    std::unordered_map<string, std::vector<dggcss::KeyframeStop>>;
+using Keyframes = std::unordered_map<string, std::vector<dggcss::KeyframeStop>>;
 
 // ---------------------------------------------------------------------------
 // Strings
@@ -694,8 +693,8 @@ std::optional<std::pair<int, int>> parseNth(string_view raw)
     {
         if (!isSpace(c))
         {
-            text.push_back(static_cast<char>(std::tolower(
-                static_cast<unsigned char>(c))));
+            text.push_back(
+                static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
         }
     }
     if (text == "odd")
@@ -833,8 +832,8 @@ bool fillStructural(Compound &c, string &why, int *pseudoElement)
         }
 
         const auto paren = pseudo.find('(');
-        const string name = toLower(
-            string_view(pseudo).substr(1, (paren == NPOS ? pseudo.size() : paren) - 1));
+        const string name = toLower(string_view(pseudo).substr(
+            1, (paren == NPOS ? pseudo.size() : paren) - 1));
         string_view arg;
         if (paren != NPOS && pseudo.back() == ')')
         {
@@ -996,7 +995,8 @@ Analysis analyseSelector(string_view selector)
             out.rejected = "unparsable selector";
             return out;
         }
-        out.parts.push_back(SelectorPart{part.combinator, std::move(*compound)});
+        out.parts.push_back(
+            SelectorPart{part.combinator, std::move(*compound)});
     }
     out.parts.front().combinator = 0;
 
@@ -1004,7 +1004,8 @@ Analysis analyseSelector(string_view selector)
     // more specific)
     const auto &subject = out.parts.back().compound;
     string subjectEmote;
-    bool subjectOk = subject.attrs.empty() && contains(subject.classes, "emote");
+    bool subjectOk =
+        subject.attrs.empty() && contains(subject.classes, "emote");
     for (const auto &cls : subject.classes)
     {
         if (cls == "emote")
@@ -1067,10 +1068,9 @@ Analysis analyseSelector(string_view selector)
         const auto &c = out.parts[i].compound;
         const bool isEmote = contains(c.classes, "emote");
         const bool isGreentext = contains(c.classes, "greentext");
-        const bool isMessage =
-            contains(c.classes, "msg-chat") ||
-            contains(c.classes, "msg-emote") ||
-            (c.classes.empty() && !c.attrs.empty());
+        const bool isMessage = contains(c.classes, "msg-chat") ||
+                               contains(c.classes, "msg-emote") ||
+                               (c.classes.empty() && !c.attrs.empty());
         const bool isUser = contains(c.classes, "user");
         const bool isChatUser = contains(c.classes, "chat-user");
         const bool isText = c.classes.size() == 1 && c.classes[0] == "text";
@@ -1108,8 +1108,8 @@ Analysis analyseSelector(string_view selector)
                 }
             }
         }
-        else if (isEmote && !isMessage && !isUser && !isText &&
-                 !isGreentext && c.attrs.empty())
+        else if (isEmote && !isMessage && !isUser && !isText && !isGreentext &&
+                 c.attrs.empty())
         {
             // another emote of the message
             out.dependsOnContext = true;
@@ -1149,8 +1149,9 @@ Analysis analyseSelector(string_view selector)
     for (size_t i = 1; i < out.parts.size(); i++)
     {
         const char comb = out.parts[i].combinator;
-        if (comb == '+' || (comb == '~' &&
-                            contains(out.parts[i - 1].compound.classes, "emote")))
+        if (comb == '+' ||
+            (comb == '~' &&
+             contains(out.parts[i - 1].compound.classes, "emote")))
         {
             out.dependsOnContext = true;
         }
@@ -1217,8 +1218,7 @@ Dom buildDom(const string &emote, const DggEmoteContext &ctx)
         m.classes = {"msg-chat", "msg-emote"};
         if (ctx.comboCount > 0)
         {
-            m.attrs.emplace_back("data-combo",
-                                 std::to_string(ctx.comboCount));
+            m.attrs.emplace_back("data-combo", std::to_string(ctx.comboCount));
             m.attrs.emplace_back("data-combo-group",
                                  dggComboGroup(ctx.comboCount).toStdString());
         }
@@ -1303,10 +1303,12 @@ Dom buildDom(const string &emote, const DggEmoteContext &ctx)
     return dom;
 }
 
-bool isSubset(const std::vector<string> &wanted, const std::vector<string> &have)
+bool isSubset(const std::vector<string> &wanted,
+              const std::vector<string> &have)
 {
-    return std::all_of(wanted.begin(), wanted.end(),
-                       [&](const string &cls) { return contains(have, cls); });
+    return std::all_of(wanted.begin(), wanted.end(), [&](const string &cls) {
+        return contains(have, cls);
+    });
 }
 
 bool compoundMatches(const Compound &c, const Dom &dom, int nodeIndex);
@@ -1421,10 +1423,10 @@ bool evalPseudo(const PseudoClass &pc, const Dom &dom, int nodeIndex)
                                       nodeIndex);
                 });
         case Kind::Has:
-            return std::any_of(
-                pc.args.begin(), pc.args.end(), [&](const ComplexSelector &a) {
-                    return hasMatch(a.parts, 0, dom, nodeIndex);
-                });
+            return std::any_of(pc.args.begin(), pc.args.end(),
+                               [&](const ComplexSelector &a) {
+                                   return hasMatch(a.parts, 0, dom, nodeIndex);
+                               });
         default:
             break;
     }
@@ -1443,8 +1445,8 @@ bool evalPseudo(const PseudoClass &pc, const Dom &dom, int nodeIndex)
     int typedCount = 0;
     for (const int sibling : siblings)
     {
-        const bool sameType = dom.nodes[static_cast<size_t>(sibling)].tag ==
-                              node.tag;
+        const bool sameType =
+            dom.nodes[static_cast<size_t>(sibling)].tag == node.tag;
         if (sameType)
         {
             typedCount++;
@@ -1546,10 +1548,9 @@ bool messageAttrMatches(const Attr &attr, const Node &node)
     }
     if (op == "|=")
     {
-        return *value == want ||
-               (value->size() > want.size() &&
-                value->compare(0, want.size(), want) == 0 &&
-                (*value)[want.size()] == '-');
+        return *value == want || (value->size() > want.size() &&
+                                  value->compare(0, want.size(), want) == 0 &&
+                                  (*value)[want.size()] == '-');
     }
     if (op == "^=")
     {
@@ -1559,8 +1560,8 @@ bool messageAttrMatches(const Attr &attr, const Node &node)
     if (op == "$=")
     {
         return value->size() >= want.size() &&
-               value->compare(value->size() - want.size(), want.size(),
-                              want) == 0;
+               value->compare(value->size() - want.size(), want.size(), want) ==
+                   0;
     }
     if (op == "*=")
     {
@@ -1753,8 +1754,8 @@ std::optional<string> resolveVars(string_view value, const Props &props,
         }
         else if (comma != NPOS)
         {
-            replacement = resolveVars(trimView(inner.substr(comma + 1)),
-                                      props, depth + 1);
+            replacement = resolveVars(trimView(inner.substr(comma + 1)), props,
+                                      depth + 1);
         }
         if (!replacement)
         {
@@ -1928,8 +1929,7 @@ void expandAnimation(Props &props, string_view value)
         {
             props["animation-iteration-count"] = token;
         }
-        else if (lower == "forwards" || lower == "backwards" ||
-                 lower == "both")
+        else if (lower == "forwards" || lower == "backwards" || lower == "both")
         {
             props["animation-fill-mode"] = lower;
         }
@@ -2288,9 +2288,9 @@ void parseFilters(string_view raw, const Props &props,
 /// The `background-position` x value of a keyframe stop, if it has one.
 /// `found` says whether the stop sets one at all, the result whether it could
 /// be evaluated.
-std::optional<double> keyframePositionX(
-    const std::vector<KeyframeStop> &stops, double percent, const Props &props,
-    double frame, double sheet, bool &found)
+std::optional<double> keyframePositionX(const std::vector<KeyframeStop> &stops,
+                                        double percent, const Props &props,
+                                        double frame, double sheet, bool &found)
 {
     found = false;
     string raw;
@@ -2329,23 +2329,23 @@ std::optional<double> keyframePositionX(
 namespace anim = dggcss::anim;
 
 static_assert(static_cast<int>(anim::FilterKind::Brightness) ==
-                  static_cast<int>(SpriteColorFilter::Kind::Brightness) &&
-              static_cast<int>(anim::FilterKind::Contrast) ==
-                  static_cast<int>(SpriteColorFilter::Kind::Contrast) &&
-              static_cast<int>(anim::FilterKind::Saturate) ==
-                  static_cast<int>(SpriteColorFilter::Kind::Saturate) &&
-              static_cast<int>(anim::FilterKind::HueRotate) ==
-                  static_cast<int>(SpriteColorFilter::Kind::HueRotate) &&
-              static_cast<int>(anim::FilterKind::Grayscale) ==
-                  static_cast<int>(SpriteColorFilter::Kind::Grayscale) &&
-              static_cast<int>(anim::FilterKind::Sepia) ==
-                  static_cast<int>(SpriteColorFilter::Kind::Sepia) &&
-              static_cast<int>(anim::FilterKind::Invert) ==
-                  static_cast<int>(SpriteColorFilter::Kind::Invert) &&
-              static_cast<int>(anim::FilterKind::Opacity) ==
-                  static_cast<int>(SpriteColorFilter::Kind::Opacity) &&
-              static_cast<int>(anim::FilterKind::DropShadow) ==
-                  static_cast<int>(SpriteColorFilter::Kind::DropShadow),
+                      static_cast<int>(SpriteColorFilter::Kind::Brightness) &&
+                  static_cast<int>(anim::FilterKind::Contrast) ==
+                      static_cast<int>(SpriteColorFilter::Kind::Contrast) &&
+                  static_cast<int>(anim::FilterKind::Saturate) ==
+                      static_cast<int>(SpriteColorFilter::Kind::Saturate) &&
+                  static_cast<int>(anim::FilterKind::HueRotate) ==
+                      static_cast<int>(SpriteColorFilter::Kind::HueRotate) &&
+                  static_cast<int>(anim::FilterKind::Grayscale) ==
+                      static_cast<int>(SpriteColorFilter::Kind::Grayscale) &&
+                  static_cast<int>(anim::FilterKind::Sepia) ==
+                      static_cast<int>(SpriteColorFilter::Kind::Sepia) &&
+                  static_cast<int>(anim::FilterKind::Invert) ==
+                      static_cast<int>(SpriteColorFilter::Kind::Invert) &&
+                  static_cast<int>(anim::FilterKind::Opacity) ==
+                      static_cast<int>(SpriteColorFilter::Kind::Opacity) &&
+                  static_cast<int>(anim::FilterKind::DropShadow) ==
+                      static_cast<int>(SpriteColorFilter::Kind::DropShadow),
               "anim::FilterKind and SpriteColorFilter::Kind must match");
 
 SpritePose poseOf(const anim::Computed &state, const anim::Box &box)
@@ -2370,8 +2370,7 @@ SpritePose poseOf(const anim::Computed &state, const anim::Box &box)
 /// nudge it (Sippy) with a smooth timing; the sprite code only does `steps()`.
 std::optional<string> backgroundPositionAsTranslate(string_view value,
                                                     const Props &props,
-                                                    QPoint basePx,
-                                                    QSize frame)
+                                                    QPoint basePx, QSize frame)
 {
     const auto tokens = splitWhitespace(value);
     if (tokens.empty() || tokens.size() > 2)
@@ -2380,10 +2379,10 @@ std::optional<string> backgroundPositionAsTranslate(string_view value,
     }
     // a single value is the horizontal one, the vertical one is `center`
     const auto x = positionPx(tokens[0], props, frame.width(), frame.width());
-    const auto y = tokens.size() == 2
-                       ? positionPx(tokens[1], props, frame.height(),
-                                    frame.height())
-                       : std::optional<double>(0.0);
+    const auto y =
+        tokens.size() == 2
+            ? positionPx(tokens[1], props, frame.height(), frame.height())
+            : std::optional<double>(0.0);
     if (!x || !y)
     {
         return std::nullopt;
@@ -2404,12 +2403,10 @@ std::optional<string> backgroundPositionAsTranslate(string_view value,
 /// Properties that only mean something for the box of a `::before` /
 /// `::after` (applyPseudoElements()). The poses of an emote can't show them.
 constexpr std::array<anim::Prop, 11> BOX_PROPS{
-    anim::Prop::Left,          anim::Prop::Right,
-    anim::Prop::Top,           anim::Prop::Bottom,
-    anim::Prop::Width,         anim::Prop::Height,
-    anim::Prop::FontSize,      anim::Prop::LineHeight,
-    anim::Prop::LetterSpacing, anim::Prop::ContentText,
-    anim::Prop::BoxShadow,
+    anim::Prop::Left,        anim::Prop::Right,      anim::Prop::Top,
+    anim::Prop::Bottom,      anim::Prop::Width,      anim::Prop::Height,
+    anim::Prop::FontSize,    anim::Prop::LineHeight, anim::Prop::LetterSpacing,
+    anim::Prop::ContentText, anim::Prop::BoxShadow,
 };
 
 /// `anim::parseAnimationList()` plus the `animation-delay` longhand that
@@ -2574,10 +2571,16 @@ bool combineWithSprite(DggEmoteStyle &style, const anim::Baked &baked,
         }
     };
     addCuts(
-        spriteCount, [&](size_t i) { return sprite.durationsMs[i]; },
+        spriteCount,
+        [&](size_t i) {
+            return sprite.durationsMs[i];
+        },
         spriteMs, spriteEnd);
     addCuts(
-        poseCount, [&](size_t i) { return baked.frames[i].durationMs; },
+        poseCount,
+        [&](size_t i) {
+            return baked.frames[i].durationMs;
+        },
         poseMs, poseEnd);
     std::sort(cuts.begin(), cuts.end());
     cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
@@ -2620,18 +2623,24 @@ bool combineWithSprite(DggEmoteStyle &style, const anim::Baked &baked,
     {
         const long long at = kept[i];
         const size_t spriteIndex = locate(
-            spriteCount, [&](size_t k) { return sprite.durationsMs[k]; },
+            spriteCount,
+            [&](size_t k) {
+                return sprite.durationsMs[k];
+            },
             spriteMs, spriteEnd, at);
         const size_t poseIndex = locate(
-            poseCount, [&](size_t k) { return baked.frames[k].durationMs; },
+            poseCount,
+            [&](size_t k) {
+                return baked.frames[k].durationMs;
+            },
             poseMs, poseEnd, at);
 
         const QPoint offset = spriteIndex < spriteCount
                                   ? sprite.offsets[spriteIndex]
                                   : sprite.restOffset;
-        const SpritePose pose =
-            poseIndex < poseCount ? poseOf(baked.frames[poseIndex].state, box)
-                                  : restPose;
+        const SpritePose pose = poseIndex < poseCount
+                                    ? poseOf(baked.frames[poseIndex].state, box)
+                                    : restPose;
         const int duration = static_cast<int>(kept[i + 1] - kept[i]);
 
         if (!poses.empty() && offsets.back() == offset && poses.back() == pose)
@@ -2737,9 +2746,9 @@ void bakeAnimations(const Props &props, const Keyframes &keyframes,
                     // the element's own `left` / `top` is where the nudge
                     // starts from
                     const auto it = props.find(lower);
-                    const auto baseText =
-                        it != props.end() ? resolveVars(it->second, props)
-                                          : std::nullopt;
+                    const auto baseText = it != props.end()
+                                              ? resolveVars(it->second, props)
+                                              : std::nullopt;
                     const auto base =
                         baseText ? parseLengthPx(*baseText) : std::nullopt;
                     const auto px = parseLengthPx(text);
@@ -2827,12 +2836,15 @@ void bakeAnimations(const Props &props, const Keyframes &keyframes,
             continue;
         }
         if (std::any_of(BOX_PROPS.begin(), BOX_PROPS.end(),
-                        [&](anim::Prop prop) { return built->animates(prop); }))
+                        [&](anim::Prop prop) {
+                            return built->animates(prop);
+                        }))
         {
             // (`left` of GIGASIP, `width` of NoTears: the emote's box moves,
             // which the picture can't show)
-            notes.push_back("animation " + spec.name +
-                            ": keyframe property of the box (left, width, ...)");
+            notes.push_back(
+                "animation " + spec.name +
+                ": keyframe property of the box (left, width, ...)");
             continue;
         }
         animations.push_back(std::move(*built));
@@ -3195,10 +3207,10 @@ DggEmoteStyle computeStyle(const Props &props, const Keyframes &keyframes,
         {
             bool hasFrom = false;
             bool hasTo = false;
-            const auto from = keyframePositionX(found->second, 0, props,
-                                                *width, sheetW, hasFrom);
-            const auto to = keyframePositionX(found->second, 100, props,
-                                              *width, sheetW, hasTo);
+            const auto from = keyframePositionX(found->second, 0, props, *width,
+                                                sheetW, hasFrom);
+            const auto to = keyframePositionX(found->second, 100, props, *width,
+                                              sheetW, hasTo);
 
             // a missing stop is the element's own value
             const double a = hasFrom ? from.value_or(x0) : x0;
@@ -3302,7 +3314,8 @@ DggEmoteStyle computeStyle(const Props &props, const Keyframes &keyframes,
         if (loops > 0)
         {
             const auto fill = first("animation-fill-mode");
-            const bool keepEnd = fill && (*fill == "forwards" || *fill == "both");
+            const bool keepEnd =
+                fill && (*fill == "forwards" || *fill == "both");
             const double restX = keepEnd ? endX : x0;
 
             style.sprite.loopCount = loops;
@@ -3393,8 +3406,8 @@ DggEmoteStyle computeStyle(const Props &props, const Keyframes &keyframes,
     }
     for (const char *ignored : ignoredProps)
     {
-        if (const auto *value = get(ignored); value != nullptr &&
-                                              *value != "none")
+        if (const auto *value = get(ignored);
+            value != nullptr && *value != "none")
         {
             notes.emplace_back(ignored);
         }
@@ -3493,8 +3506,8 @@ std::vector<anim::Animation> pseudoAnimations(const Props &props,
             for (const auto &decl : stop.decls)
             {
                 const auto value = resolveVars(decl.value, props);
-                frame.decls.push_back(anim::KeyframeDecl{
-                    decl.name, value ? *value : decl.value});
+                frame.decls.push_back(
+                    anim::KeyframeDecl{decl.name, value ? *value : decl.value});
             }
             frames.push_back(std::move(frame));
         }
@@ -3587,8 +3600,9 @@ BoxAnimation boxAnimationOf(const Props &emote, const Keyframes &keyframes)
             for (const auto &[name, text] : values)
             {
                 const bool has = std::any_of(
-                    stop.decls.begin(), stop.decls.end(),
-                    [&](const Decl &d) { return toLower(d.name) == name; });
+                    stop.decls.begin(), stop.decls.end(), [&](const Decl &d) {
+                        return toLower(d.name) == name;
+                    });
                 if (!has)
                 {
                     constant = false;
@@ -3653,10 +3667,10 @@ SpriteOverlay overlayOf(const Props &props, const anim::Computed &state,
     o.letterSpacingPx = state.letterSpacing;
     if (!state.lineHeight.isAuto)
     {
-        o.lineHeightPx = state.lineHeight.len.percent
-                             ? state.lineHeight.len.value * state.fontSize /
-                                   100.0
-                             : state.lineHeight.len.value;
+        o.lineHeightPx =
+            state.lineHeight.len.percent
+                ? state.lineHeight.len.value * state.fontSize / 100.0
+                : state.lineHeight.len.value;
     }
     o.left = lengthPx(state.left, box.width);
     o.top = lengthPx(state.top, box.height);
@@ -3704,9 +3718,8 @@ bool overlayHidden(const SpriteOverlay &o, const anim::Box &box)
     }
     if (o.top && !o.bottom && o.shadows.empty())
     {
-        const double height =
-            o.height.value_or(o.lineHeightPx > 0 ? o.lineHeightPx
-                                                 : o.fontPx * 1.3);
+        const double height = o.height.value_or(
+            o.lineHeightPx > 0 ? o.lineHeightPx : o.fontPx * 1.3);
         if (*o.top + height <= 0 || *o.top >= box.height)
         {
             return true;
@@ -3765,7 +3778,8 @@ void applyPseudoElements(const Props &emote, const Props *beforeProps,
         {
             continue;  // no content, no box
         }
-        if (position == props->end() || trimView(position->second) != "absolute")
+        if (position == props->end() ||
+            trimView(position->second) != "absolute")
         {
             notes.emplace_back("pseudo-element that isn't position: absolute");
             continue;
@@ -3784,8 +3798,8 @@ void applyPseudoElements(const Props &emote, const Props *beforeProps,
     for (const auto &name : boxAnimation.names)
     {
         style.notes.removeIf([&](const QString &note) {
-            return note.startsWith(
-                QStringLiteral("animation %1:").arg(QString::fromStdString(name)));
+            return note.startsWith(QStringLiteral("animation %1:")
+                                       .arg(QString::fromStdString(name)));
         });
     }
 
@@ -3803,9 +3817,10 @@ void applyPseudoElements(const Props &emote, const Props *beforeProps,
     // played together with its pseudo-elements: the two timelines are merged.
     // One that steps through its sprite sheet, or loops for ever, isn't.
     const bool single = sprite.offsets.size() == 1;
-    const bool sameOffsets =
-        std::all_of(sprite.offsets.begin(), sprite.offsets.end(),
-                    [&](const QPoint &p) { return p == sprite.offsets.front(); });
+    const bool sameOffsets = std::all_of(
+        sprite.offsets.begin(), sprite.offsets.end(), [&](const QPoint &p) {
+            return p == sprite.offsets.front();
+        });
     const bool posesDiffer =
         sprite.hasPoses() &&
         !std::all_of(sprite.poses.begin(), sprite.poses.end(),
@@ -3838,10 +3853,12 @@ void applyPseudoElements(const Props &emote, const Props *beforeProps,
     };
 
     const QPoint offset = sprite.offsets.front();
-    const SpritePose pose = sprite.hasPoses() ? sprite.poses.front() : SpritePose{};
+    const SpritePose pose =
+        sprite.hasPoses() ? sprite.poses.front() : SpritePose{};
 
     string problem;
-    const auto baked = anim::bakeLayers(inputs, box, anim::BakeOptions{}, problem);
+    const auto baked =
+        anim::bakeLayers(inputs, box, anim::BakeOptions{}, problem);
     if (baked && mergeOwn)
     {
         // the emote's own poses, `loopCount` times over
@@ -3925,12 +3942,11 @@ void applyPseudoElements(const Props &emote, const Props *beforeProps,
             poses.push_back(t >= ownTotal
                                 ? sprite.restPose
                                 : ownPoses[indexAt(ownStart, t % cycle)]);
-            overlays.push_back(t >= overlayTotal
-                                   ? overlaysOf(baked->rest)
-                                   : overlaysOf(baked->frames[indexAt(
-                                                                  overlayStart,
-                                                                  t)]
-                                                    .layers));
+            overlays.push_back(
+                t >= overlayTotal
+                    ? overlaysOf(baked->rest)
+                    : overlaysOf(
+                          baked->frames[indexAt(overlayStart, t)].layers));
             durations.push_back(bounds[i + 1] - t);
         }
         if (poses.size() == 1)
@@ -4030,12 +4046,12 @@ void applyPseudoElements(const Props &emote, const Props *beforeProps,
         if (widened)
         {
             const int canvasW = static_cast<int>(std::lround(boxW));
-            const int imageX = static_cast<int>(std::lround(boxAnimation.imageX));
+            const int imageX =
+                static_cast<int>(std::lround(boxAnimation.imageX));
             sprite.canvasSize = QSize(canvasW, style.frameSize.height());
-            sprite.canvasImagePos =
-                QPoint(mirrored ? canvasW - imageX - style.frameSize.width()
-                                : imageX,
-                       0);
+            sprite.canvasImagePos = QPoint(
+                mirrored ? canvasW - imageX - style.frameSize.width() : imageX,
+                0);
         }
     }
 
@@ -4125,8 +4141,8 @@ bool applyImageLayers(const Props &emote, const Props *beforeProps,
         const string value = toLower(*maskRaw);
         if (std::regex_search(value, m, re))
         {
-            mask = SpriteRadialMask{std::stod(m[1].str()),
-                                    std::stod(m[2].str())};
+            mask =
+                SpriteRadialMask{std::stod(m[1].str()), std::stod(m[2].str())};
         }
     }
     if (!before && !after && !mask)
@@ -4237,8 +4253,8 @@ bool applyImageLayers(const Props &emote, const Props *beforeProps,
     double flowY = 0;
     double previousBottomMargin = 0;
     bool first = true;
-    for (const Props *p : {before ? beforeProps : nullptr,
-                           after ? afterProps : nullptr})
+    for (const Props *p :
+         {before ? beforeProps : nullptr, after ? afterProps : nullptr})
     {
         if (p == nullptr)
         {
@@ -4279,8 +4295,9 @@ bool applyImageLayers(const Props &emote, const Props *beforeProps,
     style.sprite.offsets.assign(1, QPoint(0, 0));
     style.sprite.durationsMs.assign(1, 0);
     style.backgroundSize = QSize();
-    style.notes.removeIf(
-        [](const QString &note) { return note == QStringLiteral("mask-image"); });
+    style.notes.removeIf([](const QString &note) {
+        return note == QStringLiteral("mask-image");
+    });
     for (const auto &note : notes)
     {
         style.notes.append(QString::fromStdString(note));
@@ -4309,9 +4326,9 @@ QString DggEmoteStyle::cacheKey() const
     {
         return QStringLiteral("plain");
     }
-    return this->sprite.cacheKey() +
-           QStringLiteral("|bg%1x%2").arg(this->backgroundSize.width()).arg(
-               this->backgroundSize.height());
+    return this->sprite.cacheKey() + QStringLiteral("|bg%1x%2")
+                                         .arg(this->backgroundSize.width())
+                                         .arg(this->backgroundSize.height());
 }
 
 // ---------------------------------------------------------------------------
