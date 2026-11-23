@@ -10,6 +10,7 @@
 #include <QString>
 #include <QtGlobal>
 
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <utility>
@@ -263,9 +264,16 @@ struct SpriteSheetSpec {
         return !this->imageLayers.empty();
     }
 
+    /// Whether anything is drawn on top of the frames. A frame whose overlay
+    /// list is empty (the banana of a still NoTears parks outside of the box
+    /// and is dropped) draws nothing, so it doesn't count.
     bool hasOverlays() const
     {
-        return !this->overlays.empty() || !this->restOverlays.empty();
+        return !this->restOverlays.empty() ||
+               std::any_of(this->overlays.begin(), this->overlays.end(),
+                           [](const auto &frame) {
+                               return !frame.empty();
+                           });
     }
 
     /// How far the canvas reaches beyond the frame on each side (all zero
