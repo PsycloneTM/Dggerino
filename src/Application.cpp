@@ -228,7 +228,7 @@ void Application::initialize(Settings &settings, const Paths &paths)
         getSettings()->currentVersion.getValue() != "" &&
         getSettings()->currentVersion.getValue() != CHATTERINO_VERSION)
     {
-        auto *box = new QMessageBox(QMessageBox::Information, "Chatterino 7TV",
+        auto *box = new QMessageBox(QMessageBox::Information, "Chatterino DGG",
                                     "Show changelog?",
                                     QMessageBox::Yes | QMessageBox::No);
         box->setAttribute(Qt::WA_DeleteOnClose);

@@ -1,23 +1,28 @@
 ![chatterinoLogo](https://user-images.githubusercontent.com/41973452/272541622-52457e89-5f16-4c83-93e7-91866c25b606.png)
-Dggerino [![GitHub Actions Build (Windows, Ubuntu, MacOS)](https://github.com/PsycloneTM/dggerino/actions/workflows/build.yml/badge.svg?branch=Dgg)](https://github.com/PsycloneTM/dggerino/actions?query=workflow%3ABuild+branch%3Adgg)
+Chatterino DGG [![GitHub Actions Build (Windows, Ubuntu, MacOS)](https://github.com/PsycloneTM/dggerino/actions/workflows/build.yml/badge.svg?branch=Dgg)](https://github.com/PsycloneTM/dggerino/actions?query=workflow%3ABuild+branch%3Adgg)
 ============
 
-Dggerino is a fork of Chatterino 2. This fork mainly contains features that aren't accepted into Chatterino 2, most notably Destiny.gg chat.
+Chatterino DGG is a fork of Chatterino 7 (itself a fork of Chatterino 2). This fork mainly contains features that aren't accepted into Chatterino 2, most notably Destiny.gg chat.
 
-### Features of Dggerino
+### Features of Chatterino DGG
 
-- 7TV Name Paints
+- Destiny.gg (DGG) chat as a native platform, with history, reconnecting and live stream status
 
-- 7TV Personal Emotes
+- DGG emotes, including animated and CSS-effect emotes, and emote combos
 
-- 7TV Animated Profile Avatars
+- DGG flairs, nick colors and animated rainbow nicks
 
-- 4x Images (7TV and FFZ)
+- Pinned messages and polls
 
-### Screenshots
+- Chat events: subscriptions, gifts, donations, broadcasts, spotlights, XPOST and Vestaboard, plus mutes and bans
 
-![Example of Personal Emotes](https://user-images.githubusercontent.com/27637025/227032811-837c56eb-7724-431b-b00e-b944c9289dff.png)
-![Example of Paints](https://user-images.githubusercontent.com/27637025/227034147-cb1fcd76-dbae-4878-9551-96ffa64dd1a9.png)
+- Clickable usernames with a DGG user card
+
+- DGG viewer list
+
+- `/mentions` command
+
+- DGG account login with a login key, and sending messages
 
 ### Downloads
 
@@ -31,11 +36,11 @@ If you have issues such as crashes or weird behaviour regarding Dgg features, re
 
 ### Discord
 
-If you don't have a GitHub account and want to report issues or want to join the community you can join the official 7TV Discord using the link here: <https://discord.com/invite/dgg>.
+If you don't have a GitHub account and want to report issues or want to join the community you can join the DGG Discord using the link here: <https://discord.com/invite/dgg>.
 
 ### AVIF Support
 
-When building Dggerino, you might not have access to a static build of `libavif`. In that case, you can define `CHATTERINO_NO_AVIF_PLUGIN` in CMake. If you have `qavif.so` from [kimageformats](https://invent.kde.org/frameworks/kimageformats) installed on your system, Chatterino will pick it up and use AVIF images.
+When building Chatterino DGG, you might not have access to a static build of `libavif`. In that case, you can define `CHATTERINO_NO_AVIF_PLUGIN` in CMake. If you have `qavif.so` from [kimageformats](https://invent.kde.org/frameworks/kimageformats) installed on your system, Chatterino will pick it up and use AVIF images.
 
 ## Original Chatterino 2 Readme
 
