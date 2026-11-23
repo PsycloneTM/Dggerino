@@ -10,8 +10,17 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
+      release:
+        description: "What to publish (none = build only, nothing is published)"
+        required: true
+        type: choice
+        default: "none"
+        options:
+          - none
+          - nightly
+          - stable
       buildType:
-        description: "Build type"
+        description: "Build type (ignored when publishing nightly/stable)"
         required: true
         type: choice
         default: "auto"
@@ -21,14 +30,21 @@ on:
           - stable
   merge_group:
 
+# The release mode is part of the run name so that the "Create installer"
+# workflow (which is triggered by workflow_run) can tell whether a manual run
+# should publish anything. Do not change the "release: <mode>" part.
+run-name: "${{ case(github.event_name == 'workflow_dispatch', format('Build (manual, release: {0})', inputs.release), github.event_name == 'pull_request', github.event.pull_request.title, github.event_name == 'merge_group', github.event.merge_group.head_commit.message, github.event.head_commit.message) }}"
+
 concurrency:
-  group: build-${{ github.ref }}
+  # Manual runs get their own group so they never cancel (or get cancelled by)
+  # a push build of the same branch.
+  group: build-${{ case(github.event_name == 'workflow_dispatch', github.run_id, github.ref) }}
   cancel-in-progress: true
 
 env:
   C2_ENABLE_LTO: ${{ github.ref == 'refs/heads/dgg' || startsWith(github.ref, 'refs/heads/bugfix-release') || startsWith(github.ref, 'refs/heads/release/')}}
   CHATTERINO_REQUIRE_CLEAN_GIT: On
-  CHATTERINO_BUILD_TYPE: ${{ case(inputs.buildType != '', inputs.buildType, 'auto') }}
+  CHATTERINO_BUILD_TYPE: ${{ case(inputs.release == 'nightly', 'nightly', inputs.release == 'stable', 'stable', inputs.buildType != '', inputs.buildType, 'auto') }}
   CONAN_VERSION: 2.28.1
 
 jobs:
@@ -483,7 +499,7 @@ jobs:
   create-release:
     needs: [build-ubuntu-docker, build-flatpak, build]
     runs-on: ubuntu-latest
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/dgg')
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/dgg') || (github.event_name == 'workflow_dispatch' && inputs.release == 'nightly')
     permissions:
       contents: write # create release
 

@@ -7,6 +7,16 @@ on:
     # make sure this only runs on the default branch
     branches: [dgg, "bugfix-release/**", "release/*"]
   workflow_dispatch:
+    inputs:
+      release:
+        description: "What to publish (none = build only, nothing is published)"
+        required: true
+        type: choice
+        default: "none"
+        options:
+          - none
+          - nightly
+          - stable
 
 env:
   C2_PORTABLE_INSTALLER_VERSION: "v0.1.4"
@@ -18,7 +28,42 @@ permissions:
   actions: read
 
 jobs:
+  # Decides what (if anything) this run may publish:
+  #   auto    - triggered by a push build: previous behaviour (nightly for
+  #             untagged commits, draft release for tagged commits)
+  #   none    - manual run, build only
+  #   nightly - manual run, publish to the nightly-build release
+  #   stable  - manual run, create the draft release (commit must be tagged v*)
+  release-mode:
+    runs-on: ubuntu-latest
+    outputs:
+      MODE: ${{ steps.mode.outputs.MODE }}
+    steps:
+      - name: Resolve release mode
+        id: mode
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TRIGGER_EVENT: ${{ github.event.workflow_run.event }}
+          TRIGGER_TITLE: ${{ github.event.workflow_run.display_title }}
+          MANUAL_RELEASE: ${{ inputs.release }}
+        run: |
+          mode=auto
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            mode="$MANUAL_RELEASE"
+          elif [ "$TRIGGER_EVENT" = "workflow_dispatch" ]; then
+            # Manual "Build" run, see run-name in build.yml
+            case "$TRIGGER_TITLE" in
+              *"release: nightly"*) mode=nightly ;;
+              *"release: stable"*) mode=stable ;;
+              *) mode=none ;;
+            esac
+          fi
+          echo "Release mode: $mode"
+          echo "MODE=$mode" >> "$GITHUB_OUTPUT"
+        shell: bash
+
   create-installer:
+    needs: release-mode
     runs-on: ${{ matrix.os }}
     # Only run manually or when a build succeeds
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
@@ -117,7 +162,7 @@ jobs:
           name: ${{ steps.bundle-portable.outputs.C2_PORTABLE_BASE_NAME }}.zip
 
       - name: Create nightly release
-        if: ${{ contains(steps.build-installer.outputs.C2_INSTALLER_BASE_NAME, 'Nightly') && env.RELEASE_NIGHTLY_INSTALLER == 'ON' }}
+        if: ${{ contains(steps.build-installer.outputs.C2_INSTALLER_BASE_NAME, 'Nightly') && env.RELEASE_NIGHTLY_INSTALLER == 'ON' && contains(fromJSON('["auto","nightly"]'), needs.release-mode.outputs.MODE) }}
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
         with:
           replacesArtifacts: true
@@ -152,7 +197,7 @@ jobs:
 
   draft-release:
     runs-on: ubuntu-latest
-    needs: [create-installer, check-release]
+    needs: [create-installer, check-release, release-mode]
     permissions:
       # FIXME: this only needed for the last step (should split to another job)
       contents: write
@@ -230,8 +275,12 @@ jobs:
         run: |
           sha256sum * > sha256-checksums.txt
 
+      - name: Warn about untagged stable run
+        if: ${{ needs.release-mode.outputs.MODE == 'stable' && needs.check-release.outputs.IS_TAGGED != '0' }}
+        run: echo "::warning::Stable release requested, but this commit has no v* tag. Nothing will be published."
+
       - name: Dry Run
-        if: ${{ needs.check-release.outputs.IS_TAGGED != '0' }}
+        if: ${{ !(needs.check-release.outputs.IS_TAGGED == '0' && contains(fromJSON('["auto","stable"]'), needs.release-mode.outputs.MODE)) }}
         run: |
           echo "Dry Run"
           echo "========================================"
@@ -243,12 +292,12 @@ jobs:
 
       - name: Get Tag
         id: get-tag
-        if: ${{ needs.check-release.outputs.IS_TAGGED == '0' }}
+        if: ${{ needs.check-release.outputs.IS_TAGGED == '0' && contains(fromJSON('["auto","stable"]'), needs.release-mode.outputs.MODE) }}
         run: echo "VALUE=$(git describe --exact-match --match 'v*')" >> "$GITHUB_OUTPUT"
 
       - name: Create release
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
-        if: ${{ needs.check-release.outputs.IS_TAGGED == '0' }}
+        if: ${{ needs.check-release.outputs.IS_TAGGED == '0' && contains(fromJSON('["auto","stable"]'), needs.release-mode.outputs.MODE) }}
         with:
           replacesArtifacts: true
           allowUpdates: true
