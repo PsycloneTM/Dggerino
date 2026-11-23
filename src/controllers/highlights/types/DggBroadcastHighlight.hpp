@@ -30,7 +30,8 @@ struct DggBroadcastHighlight {
         u":/buttons/settings-darkMode.svg";
 
     static constexpr QStringView DESCRIPTION =
-        u"A destiny.gg broadcast from a moderator or a bot (<code>BROADCAST</code> event).";
+        u"A destiny.gg broadcast from a moderator or a bot "
+        u"(<code>BROADCAST</code> event).";
 
     static constexpr QStringView DEFAULT_NAME = u"DGG Broadcasts";
 

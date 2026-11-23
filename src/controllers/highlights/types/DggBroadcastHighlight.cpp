@@ -29,7 +29,7 @@ HighlightCheck DggBroadcastHighlight::buildCheck() const
 
 QDebug operator<<(QDebug dbg, const DggBroadcastHighlight &v)
 {
-    dbg.nospace() << "DggBroadcastHighlight("       //
+    dbg.nospace() << "DggBroadcastHighlight("        //
                   << "name:" << v.name               //
                   << ',' << "enabled:" << v.enabled  //
                   << ',' << "outcome:" << v.outcome  //

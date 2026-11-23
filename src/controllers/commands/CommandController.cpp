@@ -278,10 +278,10 @@ const std::unordered_map<QString, VariableReplacer> COMMAND_VARS{
 bool isDggOwnCommand(const QString &name)
 {
     static const QStringList names{
-        QStringLiteral("/w"),       QStringLiteral("/whisper"),
-        QStringLiteral("/msg"),     QStringLiteral("/message"),
-        QStringLiteral("/tell"),    QStringLiteral("/t"),
-        QStringLiteral("/notify"),  QStringLiteral("/ignore"),
+        QStringLiteral("/w"),        QStringLiteral("/whisper"),
+        QStringLiteral("/msg"),      QStringLiteral("/message"),
+        QStringLiteral("/tell"),     QStringLiteral("/t"),
+        QStringLiteral("/notify"),   QStringLiteral("/ignore"),
         QStringLiteral("/unignore"), QStringLiteral("/unignoreall"),
         QStringLiteral("/mentions"), QStringLiteral("/m"),
         QStringLiteral("/die"),      QStringLiteral("/suicide"),

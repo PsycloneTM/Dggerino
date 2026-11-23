@@ -55,9 +55,10 @@ void UserSource::addToStringList(QStringList &list, size_t maxCount,
                        [this, isFirstWord, mentionComma](const UserItem &user) {
                            const auto userMention = formatUserMention(
                                user.second, isFirstWord, mentionComma);
-                           QString strTemplate = this->prependAt_ && !this->isDgg_
-                                                     ? QStringLiteral("@%1 ")
-                                                     : QStringLiteral("%1 ");
+                           QString strTemplate =
+                               this->prependAt_ && !this->isDgg_
+                                   ? QStringLiteral("@%1 ")
+                                   : QStringLiteral("%1 ");
                            return strTemplate.arg(userMention);
                        });
 }

@@ -268,8 +268,9 @@ QFont overlayFont(const SpriteOverlay &o)
     bool monospace = false;
     QStringList families = cssFamilies(o.fontFamily, monospace);
     const bool nonAscii =
-        std::any_of(o.text.begin(), o.text.end(),
-                    [](QChar c) { return c.unicode() > 0x7F; });
+        std::any_of(o.text.begin(), o.text.end(), [](QChar c) {
+            return c.unicode() > 0x7F;
+        });
     if (nonAscii)
     {
         // an emoji: the families that have colour glyphs
@@ -286,8 +287,8 @@ QFont overlayFont(const SpriteOverlay &o)
         font.setStyleHint(QFont::Monospace);
         font.setFixedPitch(true);
     }
-    font.setPixelSize(std::max(
-        1, static_cast<int>(std::lround(o.fontPx * kTextScale))));
+    font.setPixelSize(
+        std::max(1, static_cast<int>(std::lround(o.fontPx * kTextScale))));
     font.setHintingPreference(QFont::PreferNoHinting);
     if (o.letterSpacingPx != 0.0)
     {
@@ -308,7 +309,8 @@ QStringList wrapText(const QString &text, const QFontMetricsF &metrics,
     {
         const QString candidate =
             current.isEmpty() ? word : current + QChar(u' ') + word;
-        if (!current.isEmpty() && metrics.horizontalAdvance(candidate) > maxWidth)
+        if (!current.isEmpty() &&
+            metrics.horizontalAdvance(candidate) > maxWidth)
         {
             lines.append(current);
             current = word;
@@ -409,8 +411,8 @@ QImage transparentImage(QSize size)
 /// A shadow that falls outside of `box` (CSS never draws it below the box).
 void drawOuterShadow(QImage &target, const QRectF &box, const SpriteShadow &s)
 {
-    const QRectF shape = box.translated(s.x, s.y)
-                             .adjusted(-s.spread, -s.spread, s.spread, s.spread);
+    const QRectF shape = box.translated(s.x, s.y).adjusted(-s.spread, -s.spread,
+                                                           s.spread, s.spread);
     if (shape.width() <= 0 || shape.height() <= 0)
     {
         return;
@@ -449,9 +451,8 @@ void drawInsetShadow(QImage &target, const QRectF &box, const SpriteShadow &s)
         painter.setBrush(toQColor(s.rgba));
         painter.drawRect(box);
 
-        const QRectF hole = box.translated(s.x, s.y)
-                                .adjusted(s.spread, s.spread, -s.spread,
-                                          -s.spread);
+        const QRectF hole = box.translated(s.x, s.y).adjusted(
+            s.spread, s.spread, -s.spread, -s.spread);
         if (hole.width() > 0 && hole.height() > 0)
         {
             painter.setCompositionMode(
@@ -534,10 +535,9 @@ void drawOverlay(QImage &target, const SpriteOverlay &o)
     double reach = 2;
     for (const auto &shadow : o.shadows)
     {
-        reach = std::max(reach, shadow.blur * 1.5 + std::abs(shadow.spread) +
-                                    std::max(std::abs(shadow.x),
-                                             std::abs(shadow.y)) +
-                                    2);
+        reach = std::max(
+            reach, shadow.blur * 1.5 + std::abs(shadow.spread) +
+                       std::max(std::abs(shadow.x), std::abs(shadow.y)) + 2);
     }
     for (const auto &filter : o.filters)
     {
@@ -597,9 +597,9 @@ void drawOverlay(QImage &target, const SpriteOverlay &o)
                 rect.top() + static_cast<double>(i) * lineHeight +
                 (lineHeight - metrics.height() / kTextScale) / 2.0 +
                 metrics.ascent() / kTextScale;
-            painter.drawText(QPointF(rect.left() * kTextScale,
-                                     baseline * kTextScale),
-                             lines[static_cast<qsizetype>(i)]);
+            painter.drawText(
+                QPointF(rect.left() * kTextScale, baseline * kTextScale),
+                lines[static_cast<qsizetype>(i)]);
         }
     }
 
@@ -681,7 +681,8 @@ bool SpriteSheetSpec::isValid() const
     return this->frameSize.width() > 0 && this->frameSize.height() > 0 &&
            !this->offsets.empty() &&
            this->durationsMs.size() == this->offsets.size() &&
-           (this->poses.empty() || this->poses.size() == this->offsets.size()) &&
+           (this->poses.empty() ||
+            this->poses.size() == this->offsets.size()) &&
            (this->overlays.empty() ||
             this->overlays.size() == this->offsets.size());
 }
@@ -695,12 +696,12 @@ QMargins SpriteSheetSpec::canvasMargins() const
     }
     const int left = std::max(0, this->canvasImagePos.x());
     const int top = std::max(0, this->canvasImagePos.y());
-    const int right = std::max(0, this->canvasSize.width() -
-                                      this->canvasImagePos.x() -
-                                      this->frameSize.width());
-    const int bottom = std::max(0, this->canvasSize.height() -
-                                       this->canvasImagePos.y() -
-                                       this->frameSize.height());
+    const int right =
+        std::max(0, this->canvasSize.width() - this->canvasImagePos.x() -
+                        this->frameSize.width());
+    const int bottom =
+        std::max(0, this->canvasSize.height() - this->canvasImagePos.y() -
+                        this->frameSize.height());
     return QMargins(left, top, right, bottom);
 }
 
@@ -920,11 +921,11 @@ QString SpriteSheetSpec::cacheKey() const
         };
         for (const auto &layer : this->imageLayers)
         {
-            for (const auto v : {layer.box.x(), layer.box.y(),
-                                 layer.box.width(), layer.box.height(),
-                                 layer.imageSize.width(),
-                                 layer.imageSize.height(), layer.imagePos.x(),
-                                 layer.imagePos.y(), layer.opacity})
+            for (const auto v :
+                 {layer.box.x(), layer.box.y(), layer.box.width(),
+                  layer.box.height(), layer.imageSize.width(),
+                  layer.imageSize.height(), layer.imagePos.x(),
+                  layer.imagePos.y(), layer.opacity})
             {
                 num(v);
             }
@@ -990,7 +991,8 @@ QImage applyDropShadow(const QImage &image, const SpriteColorFilter &filter)
 }
 
 /// The colour functions `filters[from, to)` over every pixel of `out`.
-void applyColorFilters(QImage &out, const std::vector<SpriteColorFilter> &filters,
+void applyColorFilters(QImage &out,
+                       const std::vector<SpriteColorFilter> &filters,
                        size_t from, size_t to)
 {
     for (int y = 0; y < out.height(); y++)
@@ -1079,8 +1081,9 @@ QImage composeImageLayers(const QImage &image, const SpriteSheetSpec &spec)
         }
 
         // the layer on its own: its box, with the image repeated in it
-        const QSize boxSize(std::max(1, static_cast<int>(std::lround(layer.box.width()))),
-                            std::max(1, static_cast<int>(std::lround(layer.box.height()))));
+        const QSize boxSize(
+            std::max(1, static_cast<int>(std::lround(layer.box.width()))),
+            std::max(1, static_cast<int>(std::lround(layer.box.height()))));
         QImage box(boxSize, QImage::Format_ARGB32_Premultiplied);
         box.fill(Qt::transparent);
         {
@@ -1154,7 +1157,9 @@ QImage composeImageLayers(const QImage &image, const SpriteSheetSpec &spec)
             {
                 const double dx = (x + 0.5 - size.width() / 2.0) / rx;
                 const double d = std::sqrt(dx * dx + dy * dy);
-                const double k = d <= a ? 1.0 : d >= b ? 0.0 : (b - d) / (b - a);
+                const double k = d <= a   ? 1.0
+                                 : d >= b ? 0.0
+                                          : (b - d) / (b - a);
                 const QRgb px = line[x];
                 line[x] = qRgba(qRed(px), qGreen(px), qBlue(px),
                                 static_cast<int>(std::lround(qAlpha(px) * k)));
@@ -1269,11 +1274,10 @@ std::vector<SpriteFrame> sliceSpriteSheet(const QImage &sheet,
 
     size_t count = spec.offsets.size();
     const int pad = spec.canvasSize.isEmpty() ? spec.glowMargin : 0;
-    const QSize outSize =
-        spec.canvasSize.isEmpty()
-            ? QSize(spec.frameSize.width() + 2 * pad,
-                    spec.frameSize.height() + 2 * pad)
-            : spec.canvasSize;
+    const QSize outSize = spec.canvasSize.isEmpty()
+                              ? QSize(spec.frameSize.width() + 2 * pad,
+                                      spec.frameSize.height() + 2 * pad)
+                              : spec.canvasSize;
     const qint64 frameBytes =
         static_cast<qint64>(outSize.width()) * outSize.height() * 4;
     bool addRest = spec.playsOnce();
@@ -1287,7 +1291,7 @@ std::vector<SpriteFrame> sliceSpriteSheet(const QImage &sheet,
     for (size_t i = 0; i < count; i++)
     {
         QImage frame = copyFrame(source, spec.offsets[i], spec.frameSize,
-                                    spec.tileX, spec.tileY);
+                                 spec.tileX, spec.tileY);
         if (pad > 0)
         {
             frame = padSpriteFrame(frame, pad);
@@ -1328,9 +1332,8 @@ std::vector<SpriteFrame> sliceSpriteSheet(const QImage &sheet,
         {
             rest = applySpriteFilters(rest, spec.filters);
         }
-        rest = composeFrame(rest, spec,
-                            spec.overlays.empty() ? nullptr
-                                                  : &spec.restOverlays);
+        rest = composeFrame(
+            rest, spec, spec.overlays.empty() ? nullptr : &spec.restOverlays);
         out.push_back(SpriteFrame{.image = std::move(rest), .durationMs = 0});
     }
 
@@ -1389,7 +1392,7 @@ PosedNativeFrames composePosedNativeFrames(
         {
             out.frames.push_back(SpriteFrame{
                 .image = applySpritePose(sources[i], spec.poses.front(),
-                                                spec.glowMargin),
+                                         spec.glowMargin),
                 .durationMs = static_cast<int>(nativeDuration(i)),
             });
         }
@@ -1440,8 +1443,8 @@ PosedNativeFrames composePosedNativeFrames(
     qint64 phaseLength = 0;
     if (endless)
     {
-        phaseLength = std::min<qint64>(std::lcm(poseTotal, nativeTotal),
-                                       MAX_PHASE_MS);
+        phaseLength =
+            std::min<qint64>(std::lcm(poseTotal, nativeTotal), MAX_PHASE_MS);
     }
     else
     {
@@ -1457,8 +1460,7 @@ PosedNativeFrames composePosedNativeFrames(
     qint64 t = 0;
     while (t < phaseLength && out.frames.size() < maxFrames)
     {
-        const qint64 step =
-            std::min({poseLeft, nativeLeft, phaseLength - t});
+        const qint64 step = std::min({poseLeft, nativeLeft, phaseLength - t});
         push(ni, pi, step);
         t += step;
         poseLeft -= step;

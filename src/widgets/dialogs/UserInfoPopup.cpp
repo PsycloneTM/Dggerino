@@ -207,15 +207,15 @@ public:
 
     int heightForWidth(int width) const override
     {
-        const auto textWidth = std::max<qreal>(
-            1.0,
-            width - this->currentPadding_.left() - this->currentPadding_.right());
+        const auto textWidth =
+            std::max<qreal>(1.0, width - this->currentPadding_.left() -
+                                     this->currentPadding_.right());
         const auto bounds = this->getFontMetrics().boundingRect(
             QRectF(0, 0, textWidth, 100000),
             Qt::TextWordWrap | Qt::TextWrapAnywhere, this->text_);
-        return static_cast<int>(
-            std::ceil(bounds.height() + this->currentPadding_.top() +
-                      this->currentPadding_.bottom()));
+        return static_cast<int>(std::ceil(bounds.height() +
+                                          this->currentPadding_.top() +
+                                          this->currentPadding_.bottom()));
     }
 
 protected:
@@ -1918,8 +1918,7 @@ void UserInfoPopup::updateDggUserData()
     const bool loggedIn = accounts.isLoggedIn();
     const bool isMyself =
         loggedIn && QString::compare(accounts.current()->username(),
-                                     this->userName_,
-                                     Qt::CaseInsensitive) == 0;
+                                     this->userName_, Qt::CaseInsensitive) == 0;
     this->ui_.whisper->setVisible(loggedIn && !isMyself);
     this->ui_.block->setVisible(false);
 
@@ -1928,8 +1927,8 @@ void UserInfoPopup::updateDggUserData()
     dggFetchUserInfo(
         requested, [self, requested](const std::optional<DggProfile> &profile,
                                      int status) {
-            if (!self || self->userName_.compare(requested,
-                                                 Qt::CaseInsensitive) != 0)
+            if (!self ||
+                self->userName_.compare(requested, Qt::CaseInsensitive) != 0)
             {
                 return;  // closed, or the card moved on to someone else
             }
@@ -1959,8 +1958,8 @@ void UserInfoPopup::updateDggUserData()
             // the site's user info has no subscription, so the tier (and
             // Patreon) stay what chat told us
             auto merged = profile->user;
-            if (auto *channel = dynamic_cast<DggChannel *>(
-                    self->underlyingChannel_.get()))
+            if (auto *channel =
+                    dynamic_cast<DggChannel *>(self->underlyingChannel_.get()))
             {
                 if (const auto known = channel->findUser(requested))
                 {
@@ -1995,8 +1994,7 @@ void UserInfoPopup::showDggUser(const DggUser &user, const DggProfile &profile)
         this->userId_ = u"dgg:" % QString::number(user.id);
         this->updateNotes();
         this->ui_.notesAdd->setEnabled(true);
-        this->ui_.userIDLabel->setText(TEXT_USER_ID %
-                                       QString::number(user.id));
+        this->ui_.userIDLabel->setText(TEXT_USER_ID % QString::number(user.id));
         this->ui_.userIDLabel->setProperty("copy-text",
                                            QString::number(user.id));
     }
@@ -2011,11 +2009,10 @@ void UserInfoPopup::showDggUser(const DggUser &user, const DggProfile &profile)
     // what they watch first, as a link to that stream's bigscreen page
     if (!user.watchingPlatform.isEmpty())
     {
-        this->ui_.watchingLabel->setText(
-            u"Watching: [%1 on %2](%3)"_s.arg(
-                user.watchingId, user.watchingPlatform,
-                dggBigscreenUrl(user.watchingPlatform, user.watchingId)
-                    .toString(QUrl::FullyEncoded)));
+        this->ui_.watchingLabel->setText(u"Watching: [%1 on %2](%3)"_s.arg(
+            user.watchingId, user.watchingPlatform,
+            dggBigscreenUrl(user.watchingPlatform, user.watchingId)
+                .toString(QUrl::FullyEncoded)));
         this->ui_.watchingLabel->show();
     }
 

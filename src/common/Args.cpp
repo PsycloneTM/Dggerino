@@ -135,7 +135,8 @@ namespace chatterino {
 Args::Args(const QApplication &app)
 {
     QCommandLineParser parser;
-    parser.setApplicationDescription("Chatterino DGG Client for Twitch and DGG Chat");
+    parser.setApplicationDescription(
+        "Chatterino DGG Client for Twitch and DGG Chat");
     parser.addHelpOption();
 
     // Used internally by app to restart after unexpected crashes

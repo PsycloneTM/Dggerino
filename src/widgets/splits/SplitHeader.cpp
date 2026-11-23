@@ -43,8 +43,8 @@
 
 #include <QBuffer>
 #include <QDrag>
-#include <QImage>
 #include <QHBoxLayout>
+#include <QImage>
 #include <QInputDialog>
 #include <QMenu>
 #include <QMimeData>
@@ -1054,10 +1054,10 @@ void SplitHeader::handleChannelChanged()
     }
     else if (auto *dggChannel = dynamic_cast<DggChannel *>(channel.get()))
     {
-        this->channelConnections_.managedConnect(
-            dggChannel->streamDataChanged, [this]() {
-                this->updateChannelText();
-            });
+        this->channelConnections_.managedConnect(dggChannel->streamDataChanged,
+                                                 [this]() {
+                                                     this->updateChannelText();
+                                                 });
 
         this->channelConnections_.managedConnect(
             dggChannel->pinnedMessageChanged, [this]() {

@@ -101,13 +101,14 @@ void appendChunk(QByteArray &out, const char (&type)[5],
 /// past the end of the file (a missing IEND is tolerated).
 bool splitChunks(const QByteArray &data, std::vector<Chunk> &out)
 {
-    if (data.size() < 8 ||
-        std::memcmp(data.constData(), PNG_SIGNATURE, sizeof(PNG_SIGNATURE)) != 0)
+    if (data.size() < 8 || std::memcmp(data.constData(), PNG_SIGNATURE,
+                                       sizeof(PNG_SIGNATURE)) != 0)
     {
         return false;
     }
 
-    const auto *bytes = reinterpret_cast<const unsigned char *>(data.constData());
+    const auto *bytes =
+        reinterpret_cast<const unsigned char *>(data.constData());
     const quint64 size = static_cast<quint64>(data.size());
     quint64 offset = 8;
     while (offset + 12 <= size)
@@ -154,13 +155,14 @@ namespace chatterino {
 
 bool isApng(const QByteArray &data)
 {
-    if (data.size() < 8 ||
-        std::memcmp(data.constData(), PNG_SIGNATURE, sizeof(PNG_SIGNATURE)) != 0)
+    if (data.size() < 8 || std::memcmp(data.constData(), PNG_SIGNATURE,
+                                       sizeof(PNG_SIGNATURE)) != 0)
     {
         return false;
     }
 
-    const auto *bytes = reinterpret_cast<const unsigned char *>(data.constData());
+    const auto *bytes =
+        reinterpret_cast<const unsigned char *>(data.constData());
     const quint64 size = static_cast<quint64>(data.size());
     quint64 offset = 8;
     while (offset + 12 <= size)
@@ -401,12 +403,12 @@ std::optional<ApngAnimation> decodeApng(const QByteArray &data, qint64 maxBytes)
 
         {
             QPainter painter(&canvas);
-            painter.setCompositionMode(frame.blend == BlendOver
-                                           ? QPainter::CompositionMode_SourceOver
-                                           : QPainter::CompositionMode_Source);
-            painter.drawImage(QPoint(static_cast<int>(frame.x),
-                                     static_cast<int>(frame.y)),
-                              part);
+            painter.setCompositionMode(
+                frame.blend == BlendOver ? QPainter::CompositionMode_SourceOver
+                                         : QPainter::CompositionMode_Source);
+            painter.drawImage(
+                QPoint(static_cast<int>(frame.x), static_cast<int>(frame.y)),
+                part);
         }
 
         // Same delay rules as for GIFs (browsers treat <= 10 ms as 100 ms)

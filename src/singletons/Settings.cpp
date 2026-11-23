@@ -974,7 +974,8 @@ bool Settings::recreateMissingHighlights()
         {
             qCInfo(LOG) << "Recreating missing highlight"
                         << DggSubscriptionHighlight::TYPE_NAME;
-            this->p->sharedHighlightsSetting.push_back(DggSubscriptionHighlight{});
+            this->p->sharedHighlightsSetting.push_back(
+                DggSubscriptionHighlight{});
             dirty |= true;
         }
         if (missing.contains(DggGiftHighlight::ID))
@@ -1016,7 +1017,8 @@ bool Settings::recreateMissingHighlights()
         {
             qCInfo(LOG) << "Recreating missing highlight"
                         << DggVestaboardHighlight::TYPE_NAME;
-            this->p->sharedHighlightsSetting.push_back(DggVestaboardHighlight{});
+            this->p->sharedHighlightsSetting.push_back(
+                DggVestaboardHighlight{});
             dirty |= true;
         }
     }

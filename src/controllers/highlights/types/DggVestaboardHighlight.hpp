@@ -30,15 +30,15 @@ struct DggVestaboardHighlight {
         u":/buttons/settings-darkMode.svg";
 
     static constexpr QStringView DESCRIPTION =
-        u"A destiny.gg Vestaboard event (<code>VESTABOARD_LEAD</code>, <code>VESTABOARD_HOURLY</code> or <code>VESTABOARD_RESET</code>).";
+        u"A destiny.gg Vestaboard event (<code>VESTABOARD_LEAD</code>, "
+        u"<code>VESTABOARD_HOURLY</code> or <code>VESTABOARD_RESET</code>).";
 
     static constexpr QStringView DEFAULT_NAME = u"DGG Vestaboard";
 
     static constexpr bool ENABLED_BY_DEFAULT = true;
     static constexpr bool SHOW_IN_MENTIONS_DEFAULT = false;
     static constexpr bool ALERT_DEFAULT = false;
-    static constexpr QColor BACKGROUND_COLOR_DEFAULT =
-        QColor(0, 144, 255, 80);
+    static constexpr QColor BACKGROUND_COLOR_DEFAULT = QColor(0, 144, 255, 80);
 
     QString name;
     std::optional<bool> enabled;

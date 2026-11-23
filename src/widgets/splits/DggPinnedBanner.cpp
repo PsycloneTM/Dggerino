@@ -191,10 +191,9 @@ void DggPinnedBanner::refresh()
     }
 
     this->pinnedByLabel_->setText(
-        pin.user.nick.isEmpty()
-            ? QStringLiteral("Pinned message")
-            : QStringLiteral("Pinned by <b>%1</b>")
-                  .arg(pin.user.nick.toHtmlEscaped()));
+        pin.user.nick.isEmpty() ? QStringLiteral("Pinned message")
+                                : QStringLiteral("Pinned by <b>%1</b>")
+                                      .arg(pin.user.nick.toHtmlEscaped()));
     this->messageLabel_->setText(
         pinnedRichText(pin.text, this->theme->messages.textColors.link));
     this->updateMessageHeight();
@@ -269,7 +268,8 @@ void DggPinnedBanner::updateMessageHeight()
 
 void DggPinnedBanner::updateMessageHeightIfNeeded()
 {
-    if (this->lastViewportWidth_ != this->messageScrollArea_->viewport()->width())
+    if (this->lastViewportWidth_ !=
+        this->messageScrollArea_->viewport()->width())
     {
         this->updateMessageHeight();
     }

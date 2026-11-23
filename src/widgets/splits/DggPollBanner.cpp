@@ -223,8 +223,7 @@ protected:
             const qint64 votes = index < this->poll_.totals.size()
                                      ? this->poll_.totals[index]
                                      : 0;
-            const bool leader =
-                this->poll_.ended && best > 0 && votes == best;
+            const bool leader = this->poll_.ended && best > 0 && votes == best;
             const QRect box(0, row.top + gap, this->width(),
                             row.height - 2 * gap);
 
@@ -337,15 +336,14 @@ private:
         }
         const qint64 votes =
             index < this->poll_.totals.size() ? this->poll_.totals[index] : 0;
-        const auto percent =
-            all > 0 ? qRound(100.0 * static_cast<double>(votes) /
-                             static_cast<double>(all))
-                    : 0;
+        const auto percent = all > 0
+                                 ? qRound(100.0 * static_cast<double>(votes) /
+                                          static_cast<double>(all))
+                                 : 0;
         return QStringLiteral("%1% (%2 %3)")
             .arg(percent)
             .arg(votes)
-            .arg(votes == 1 ? QStringLiteral("vote")
-                            : QStringLiteral("votes"));
+            .arg(votes == 1 ? QStringLiteral("vote") : QStringLiteral("votes"));
     }
 
     /// Wraps every option to the current width and works out the rows.
@@ -371,12 +369,12 @@ private:
                 std::make_unique<QTextLayout>(label, this->font(), this);
 
             // Room: a padding, the text, a padding, the share, a padding
-            const int available = std::max(
-                20, this->width() - 3 * pad -
-                        metrics.horizontalAdvance(row.share));
+            const int available =
+                std::max(20, this->width() - 3 * pad -
+                                 metrics.horizontalAdvance(row.share));
             row.textHeight = layoutText(*row.layout, available);
-            row.height = std::max(metrics.height(), row.textHeight) +
-                         this->rowPadding();
+            row.height =
+                std::max(metrics.height(), row.textHeight) + this->rowPadding();
 
             y += row.height;
             this->rows_.push_back(std::move(row));
@@ -475,10 +473,9 @@ DggPollBanner::DggPollBanner(QWidget *parent)
                                             QSizePolicy::Fixed);
     this->optionsScrollArea_->setWidget(this->optionsView_);
     outerBox->addWidget(this->optionsScrollArea_);
-    static_cast<PollOptionsView *>(this->optionsView_)->heightChanged =
-        [this] {
-            this->fitOptions();
-        };
+    static_cast<PollOptionsView *>(this->optionsView_)->heightChanged = [this] {
+        this->fitOptions();
+    };
     static_cast<PollOptionsView *>(this->optionsView_)->optionClicked =
         [this](int option) {
             if (auto channel = this->channel_.lock())
@@ -638,8 +635,8 @@ void DggPollBanner::refresh()
     this->questionLabel_->setText(poll.question);
 
     auto *options = static_cast<PollOptionsView *>(this->optionsView_);
-    options->setPoll(poll, this->theme->splits.header.text,
-                     this->theme->accent, this->scale());
+    options->setPoll(poll, this->theme->splits.header.text, this->theme->accent,
+                     this->scale());
     this->fitOptions();
 
     this->tick();
@@ -703,11 +700,10 @@ void DggPollBanner::tick()
         const auto remainingMs = std::max<qint64>(
             0, this->poll_->endsAtMs - QDateTime::currentMSecsSinceEpoch());
         const auto seconds = (remainingMs + 999) / 1000;
-        this->statusLabel_->setText(
-            QStringLiteral("%1 \u00B7 %2:%3")
-                .arg(votesText(this->poll_->votesCast))
-                .arg(seconds / 60)
-                .arg(seconds % 60, 2, 10, QChar(u'0')));
+        this->statusLabel_->setText(QStringLiteral("%1 \u00B7 %2:%3")
+                                        .arg(votesText(this->poll_->votesCast))
+                                        .arg(seconds / 60)
+                                        .arg(seconds % 60, 2, 10, QChar(u'0')));
     }
     this->update();
 }
@@ -727,12 +723,12 @@ void DggPollBanner::paintEvent(QPaintEvent *event)
 
     // The countdown, a thin bar above the bottom border that runs out
     const int barHeight = std::max(2, static_cast<int>(3 * this->scale()));
-    const int barWidth = static_cast<int>(
-        static_cast<double>(this->width()) * this->remainingFraction());
+    const int barWidth = static_cast<int>(static_cast<double>(this->width()) *
+                                          this->remainingFraction());
     if (barWidth > 0)
     {
-        painter.fillRect(0, this->height() - 1 - barHeight, barWidth,
-                         barHeight, this->theme->accent);
+        painter.fillRect(0, this->height() - 1 - barHeight, barWidth, barHeight,
+                         this->theme->accent);
     }
 }
 

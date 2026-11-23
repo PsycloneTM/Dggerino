@@ -13,7 +13,7 @@
 #include "controllers/highlights/types/Common.hpp"
 #include "controllers/highlights/types/LowTrustUserHighlight.hpp"
 #include "providers/dgg/DggAccountManager.hpp"  // IWYU pragma: keep
-#include "providers/twitch/TwitchAccount.hpp"  // IWYU pragma: keep
+#include "providers/twitch/TwitchAccount.hpp"   // IWYU pragma: keep
 #include "singletons/Settings.hpp"
 
 namespace chatterino {
@@ -192,13 +192,13 @@ std::unordered_set<QStringView> HighlightController::billTinHighlights()
         YourMessagesHighlight::ID,               //
         LowTrustUserHighlight::ID,               //
         UncategorizedNotificationHighlight::ID,  //
-        DggSubscriptionHighlight::ID,  //
-        DggGiftHighlight::ID,  //
-        DggDonationHighlight::ID,  //
-        DggSpotlightHighlight::ID,  //
-        DggBroadcastHighlight::ID,  //
-        DggXPostHighlight::ID,  //
-        DggVestaboardHighlight::ID,  //
+        DggSubscriptionHighlight::ID,            //
+        DggGiftHighlight::ID,                    //
+        DggDonationHighlight::ID,                //
+        DggSpotlightHighlight::ID,               //
+        DggBroadcastHighlight::ID,               //
+        DggXPostHighlight::ID,                   //
+        DggVestaboardHighlight::ID,              //
     };
 }
 

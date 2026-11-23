@@ -17,11 +17,11 @@
 #include "messages/MessageBuilder.hpp"
 #include "messages/MessageElement.hpp"
 #include "providers/bttv/BttvEmotes.hpp"
-#include "providers/emoji/Emojis.hpp"
-#include "providers/ffz/FfzEmotes.hpp"
 #include "providers/dgg/DggAssets.hpp"
 #include "providers/dgg/DggChannel.hpp"
 #include "providers/dgg/DggChatServer.hpp"
+#include "providers/emoji/Emojis.hpp"
+#include "providers/ffz/FfzEmotes.hpp"
 #include "providers/kick/KickAccount.hpp"
 #include "providers/kick/KickChatServer.hpp"
 #include "providers/seventv/SeventvEmotes.hpp"
@@ -384,8 +384,7 @@ void addDggEmotes(const DggAssets &assets, Channel &freeChannel,
         }
         else if (entry.minimumSubTier > 0)
         {
-            tiers[entry.minimumSubTier].emplace(entry.emote->name,
-                                                entry.emote);
+            tiers[entry.minimumSubTier].emplace(entry.emote->name, entry.emote);
         }
         else
         {
@@ -399,8 +398,7 @@ void addDggEmotes(const DggAssets &assets, Channel &freeChannel,
     }
     for (const auto &[tier, emotes] : tiers)
     {
-        addEmotes(subChannel, emotes,
-                  u"Destiny.gg (Tier %1)"_s.arg(tier));
+        addEmotes(subChannel, emotes, u"Destiny.gg (Tier %1)"_s.arg(tier));
     }
     if (!patreon.empty())
     {

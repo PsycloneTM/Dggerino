@@ -5,10 +5,10 @@
 #include <QPoint>
 #include <QPointF>
 #include <QRectF>
-#include <QtGlobal>
 #include <QSize>
 #include <QSizeF>
 #include <QString>
+#include <QtGlobal>
 
 #include <array>
 #include <optional>

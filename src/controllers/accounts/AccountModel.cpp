@@ -44,7 +44,7 @@ int AccountModel::beforeInsert(const std::shared_ptr<Account> &item,
     const int count = static_cast<int>(rows.size());
     const QString &category = item->getCategory();
 
-    int headerIndex = -1;  // the header of this category, if it has one
+    int headerIndex = -1;    // the header of this category, if it has one
     int nextHeader = count;  // the header of the next category, or the end
     for (int i = 0; i < count; i++)
     {

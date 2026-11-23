@@ -48,8 +48,7 @@ public:
     /// shared clock like any animated image; the CSS poses of `poses` (a
     /// slide, a shake, a flip) are a second, separate animation drawn over
     /// whichever frame is current (see `PosedLiveFrames`).
-    Frames(QList<Frame> &&frames, bool oneShot = false,
-           qsizetype loopFrom = -1,
+    Frames(QList<Frame> &&frames, bool oneShot = false, qsizetype loopFrom = -1,
            std::shared_ptr<const SpriteSheetSpec> poses = nullptr);
     ~Frames();
 
@@ -120,7 +119,8 @@ public:
     /// `spec` describes one frame at (0, 0) covering the entire source image,
     /// animated formats such as GIF remain animated and CSS colour filters
     /// are applied to each native frame.
-    static ImagePtr fromSpriteSheet(const Url &url, const SpriteSheetSpec &spec);
+    static ImagePtr fromSpriteSheet(const Url &url,
+                                    const SpriteSheetSpec &spec);
 
     const Url &url() const;
     bool loaded() const;
@@ -183,8 +183,8 @@ private:
     std::optional<SpriteSheetSpec> sprite_;
 
     friend class ImageExpirationPool;
-    friend void detail::assignFrames(std::weak_ptr<Image>,
-                                     QList<detail::Frame>, bool, qsizetype,
+    friend void detail::assignFrames(std::weak_ptr<Image>, QList<detail::Frame>,
+                                     bool, qsizetype,
                                      std::shared_ptr<const SpriteSheetSpec>);
 };
 

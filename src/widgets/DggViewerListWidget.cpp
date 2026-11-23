@@ -106,10 +106,9 @@ DggViewerListWidget::DggViewerListWidget(
     this->loadingLabel_ = new QLabel(u"Loading..."_s);
     this->searchBar_->setPlaceholderText(u"Search User..."_s);
 
-    QObject::connect(this->searchBar_, &QLineEdit::textEdited, this,
-                     [this] {
-                         this->performListSearch();
-                     });
+    QObject::connect(this->searchBar_, &QLineEdit::textEdited, this, [this] {
+        this->performListSearch();
+    });
 
     this->setMinimumWidth(300);
 

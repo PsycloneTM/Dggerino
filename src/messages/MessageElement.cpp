@@ -23,11 +23,11 @@
 #include "util/DebugCount.hpp"
 #include "util/Variant.hpp"
 
-#include <algorithm>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 

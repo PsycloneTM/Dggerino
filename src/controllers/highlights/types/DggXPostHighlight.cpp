@@ -29,7 +29,7 @@ HighlightCheck DggXPostHighlight::buildCheck() const
 
 QDebug operator<<(QDebug dbg, const DggXPostHighlight &v)
 {
-    dbg.nospace() << "DggXPostHighlight("       //
+    dbg.nospace() << "DggXPostHighlight("            //
                   << "name:" << v.name               //
                   << ',' << "enabled:" << v.enabled  //
                   << ',' << "outcome:" << v.outcome  //

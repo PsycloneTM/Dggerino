@@ -233,10 +233,9 @@ void MessageLayoutContainer::breakLine()
         if (element->getCreator().getFlags().has(
                 MessageElementFlag::DggComboText))
         {
-            yExtra -=
-                std::max<qreal>(0, this->lineHeight_ -
-                                       element->getRect().height()) /
-                2;
+            yExtra -= std::max<qreal>(
+                          0, this->lineHeight_ - element->getRect().height()) /
+                      2;
         }
 
         element->setPosition(QPointF{

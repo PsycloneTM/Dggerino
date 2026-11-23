@@ -225,8 +225,7 @@ struct Frames::CachedFrames : Storage {
         }
         auto phase = static_cast<qint64>(this->clock->position() % total);
         auto i = from;
-        while (i + 1 < this->items.size() &&
-               phase > this->items.at(i).duration)
+        while (i + 1 < this->items.size() && phase > this->items.at(i).duration)
         {
             phase -= this->items.at(i).duration;
             i++;
@@ -343,7 +342,8 @@ struct Frames::PosedLiveFrames : Storage {
             const int d = frame.duration > 0 ? frame.duration : 100;
             this->durations.push_back(std::max(20, d));
             this->nativeTotal += this->durations.back();
-            this->bytes += static_cast<int64_t>(this->sources.back().sizeInBytes());
+            this->bytes +=
+                static_cast<int64_t>(this->sources.back().sizeInBytes());
         }
         for (const auto ms : this->spec->durationsMs)
         {
@@ -377,8 +377,9 @@ struct Frames::PosedLiveFrames : Storage {
     void start(GIFTimer *timer) override
     {
         this->startPosition = timer->position();
-        this->gifTimerConnection = timer->signal.connect(
-            [this, timer] { this->advance(timer->position()); });
+        this->gifTimerConnection = timer->signal.connect([this, timer] {
+            this->advance(timer->position());
+        });
         this->advance(this->startPosition);
     }
 
@@ -412,8 +413,8 @@ struct Frames::PosedLiveFrames : Storage {
         else if (this->poseTotal > 0)
         {
             if (this->spec->loopCount > 0 &&
-                elapsed >= this->poseTotal *
-                               std::min(this->spec->loopCount, 50))
+                elapsed >=
+                    this->poseTotal * std::min(this->spec->loopCount, 50))
             {
                 pi = poseCount;  // done: the rest pose stays
             }
@@ -462,13 +463,13 @@ struct Frames::PosedLiveFrames : Storage {
             {
                 this->cache.clear();
             }
-            const auto &pose =
-                pi == this->spec->poses.size() ? this->spec->restPose
-                                               : this->spec->poses[pi];
+            const auto &pose = pi == this->spec->poses.size()
+                                   ? this->spec->restPose
+                                   : this->spec->poses[pi];
             it = this->cache
-                     .emplace(key, QPixmap::fromImage(applySpritePose(
-                                       this->sources[ni], pose,
-                                       this->spec->glowMargin)))
+                     .emplace(key, QPixmap::fromImage(
+                                       applySpritePose(this->sources[ni], pose,
+                                                       this->spec->glowMargin)))
                      .first;
         }
         this->currentKey = key;
@@ -595,9 +596,8 @@ QList<Frame> readFrames(QImageReader &reader, const Url &url,
     // Some image handlers cannot report their frame count up front. In that
     // case, keep reading while the handler says another frame is available.
     // A static image with no count is still one frame.
-    const int frameLimit = reportedCount > 0
-                               ? reportedCount
-                               : (supportsAnimation ? 512 : 1);
+    const int frameLimit =
+        reportedCount > 0 ? reportedCount : (supportsAnimation ? 512 : 1);
     qint64 decodedBytes = 0;
 
     for (int index = 0; index < frameLimit && reader.canRead(); ++index)
@@ -972,8 +972,8 @@ int Image::width() const
     if (auto size = this->frames_->frameSize())
     {
         const auto margins = this->canvasMargins();
-        return static_cast<int>(size->width() * this->scale_ -
-                                margins.left() - margins.right());
+        return static_cast<int>(size->width() * this->scale_ - margins.left() -
+                                margins.right());
     }
 
     // No frames loaded, use the expected size
@@ -992,8 +992,8 @@ int Image::height() const
     if (auto size = this->frames_->frameSize())
     {
         const auto margins = this->canvasMargins();
-        return static_cast<int>(size->height() * this->scale_ -
-                                margins.top() - margins.bottom());
+        return static_cast<int>(size->height() * this->scale_ - margins.top() -
+                                margins.bottom());
     }
 
     // No frames loaded, use the expected size
@@ -1012,10 +1012,9 @@ QSizeF Image::size() const
     if (auto size = this->frames_->frameSize())
     {
         const auto margins = this->canvasMargins();
-        return QSizeF(size->width() * this->scale_ - margins.left() -
-                          margins.right(),
-                      size->height() * this->scale_ - margins.top() -
-                          margins.bottom());
+        return QSizeF(
+            size->width() * this->scale_ - margins.left() - margins.right(),
+            size->height() * this->scale_ - margins.top() - margins.bottom());
     }
 
     // No frames loaded, use the expected size
@@ -1036,10 +1035,9 @@ QMarginsF Image::canvasMargins() const
         return {};
     }
     const auto margins = this->sprite_->canvasMargins();
-    return QMarginsF(margins.left() * this->scale_,
-                     margins.top() * this->scale_,
-                     margins.right() * this->scale_,
-                     margins.bottom() * this->scale_);
+    return QMarginsF(
+        margins.left() * this->scale_, margins.top() * this->scale_,
+        margins.right() * this->scale_, margins.bottom() * this->scale_);
 }
 
 void Image::actuallyLoad()
@@ -1091,10 +1089,10 @@ void Image::actuallyLoad()
 
         const int reportedFrameCount =
             apng ? int(apng->frames.size()) : reader.imageCount();
-        const bool supportsAnimation =
-            apng ? true : reader.supportsAnimation();
+        const bool supportsAnimation = apng ? true : reader.supportsAnimation();
         qCDebug(chatterinoImage)
-            << "Image decoder" << (apng ? QByteArray("apng (built-in)") : reader.format())
+            << "Image decoder"
+            << (apng ? QByteArray("apng (built-in)") : reader.format())
             << "size" << size << "frames" << reportedFrameCount
             << "supports animation" << supportsAnimation << "url"
             << shared->url().string;
@@ -1169,8 +1167,8 @@ void Image::actuallyLoad()
 
             const bool nativePosed =
                 supportsAnimation && spec.hasPoses() && !spec.hasOverlays() &&
-                spec.canvasSize.isEmpty() &&
-                (apng || reportedFrameCount > 1) && spec.frameSize == size &&
+                spec.canvasSize.isEmpty() && (apng || reportedFrameCount > 1) &&
+                spec.frameSize == size &&
                 std::all_of(spec.offsets.begin(), spec.offsets.end(),
                             [](const QPoint &p) {
                                 return p == QPoint(0, 0);
@@ -1206,8 +1204,9 @@ void Image::actuallyLoad()
             }
 
             const bool fullImageFrame =
-                !spec.hasPoses() && !spec.hasImageLayers() && !spec.hasOverlays() &&
-                spec.canvasSize.isEmpty() && spec.offsets.size() == 1 &&
+                !spec.hasPoses() && !spec.hasImageLayers() &&
+                !spec.hasOverlays() && spec.canvasSize.isEmpty() &&
+                spec.offsets.size() == 1 &&
                 spec.offsets.front() == QPoint(0, 0) && spec.frameSize == size;
             if (supportsAnimation && fullImageFrame)
             {
@@ -1249,8 +1248,8 @@ void Image::actuallyLoad()
                 return;
             }
 
-            auto sliced = sliceSpriteSheet(sheet, *shared->sprite_,
-                                           Image::maxBytesRam);
+            auto sliced =
+                sliceSpriteSheet(sheet, *shared->sprite_, Image::maxBytesRam);
             if (sliced.empty())
             {
                 shared->empty_ = true;
@@ -1283,7 +1282,8 @@ void Image::actuallyLoad()
                 {
                     once.push_back(toFrame(sliced[i]));
                 }
-                frames.reserve(static_cast<qsizetype>(cycle * static_cast<size_t>(plays) + 1));
+                frames.reserve(static_cast<qsizetype>(
+                    cycle * static_cast<size_t>(plays) + 1));
                 for (int play = 0; play < plays; play++)
                 {
                     for (const auto &frame : once)

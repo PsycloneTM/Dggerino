@@ -30,7 +30,8 @@ struct DggGiftHighlight {
         u":/buttons/settings-darkMode.svg";
 
     static constexpr QStringView DESCRIPTION =
-        u"A destiny.gg gifted subscription or mass gift<br />(<code>GIFTSUB</code> and <code>MASSGIFT</code> events).";
+        u"A destiny.gg gifted subscription or mass gift<br "
+        u"/>(<code>GIFTSUB</code> and <code>MASSGIFT</code> events).";
 
     static constexpr QStringView DEFAULT_NAME = u"DGG Gifted Subscriptions";
 

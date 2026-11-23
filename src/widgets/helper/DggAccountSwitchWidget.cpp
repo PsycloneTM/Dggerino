@@ -36,7 +36,8 @@ DggAccountSwitchWidget::DggAccountSwitchWidget(QWidget *parent)
         }
         else
         {
-            getApp()->getAccounts()->dgg.currentUsername = newUsername.toLower();
+            getApp()->getAccounts()->dgg.currentUsername =
+                newUsername.toLower();
         }
 
         std::ignore = getSettings()->requestSave();

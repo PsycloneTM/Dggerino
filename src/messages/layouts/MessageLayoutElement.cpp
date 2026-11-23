@@ -202,9 +202,8 @@ void ImageLayoutElement::paint(QPainter &painter,
     if (pixmap && !this->image_->animated())
     {
         // fourtf: make it use qreal values
-        painter.drawPixmap(
-            pixmapRectOf(*this->image_, QRectF(this->getRect())), *pixmap,
-            QRectF());
+        painter.drawPixmap(pixmapRectOf(*this->image_, QRectF(this->getRect())),
+                           *pixmap, QRectF());
     }
 }
 
@@ -586,9 +585,8 @@ bool TextLayoutElement::paintAnimated(QPainter &painter, const qreal yOffset)
         // A picture drawn at a fractional position is resampled, and it
         // wobbles while the view scrolls. Sit it on a device pixel.
         const qreal dpr = std::max<qreal>(this->dpr_, 1.0);
-        rainbowRect.moveTopLeft(
-            {std::round(rainbowRect.x() * dpr) / dpr,
-             std::round(rainbowRect.y() * dpr) / dpr});
+        rainbowRect.moveTopLeft({std::round(rainbowRect.x() * dpr) / dpr,
+                                 std::round(rainbowRect.y() * dpr) / dpr});
         painter.drawPixmap(rainbowRect.topLeft(), rainbow);
         return true;
     }
