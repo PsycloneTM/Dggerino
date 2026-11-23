@@ -120,24 +120,11 @@ std::vector<string_view> splitSpace(string_view s)
 std::optional<double> parseNumber(string_view s)
 {
     s = trim(s);
-    if (s.empty())
+    size_t consumed = 0;
+    const auto value = parseNumberPrefix(s, consumed);
+    if (!value || consumed != s.size())
     {
         return std::nullopt;
-    }
-    const string text(s);
-    char *end = nullptr;
-    const double value = std::strtod(text.c_str(), &end);
-    if (end != text.c_str() + text.size() || !std::isfinite(value))
-    {
-        return std::nullopt;
-    }
-    // strtod also takes "inf", "nan" and hex floats. CSS doesn't.
-    for (const char c : text)
-    {
-        if (std::isalpha(static_cast<unsigned char>(c)) && c != 'e' && c != 'E')
-        {
-            return std::nullopt;
-        }
     }
     return value;
 }
@@ -543,6 +530,10 @@ std::optional<Content> parseContent(string_view text)
                 i++;
             }
             i--;
+            if (cp == 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
+            {
+                cp = 0xFFFD;  // what CSS says for these
+            }
             appendUtf8(out.text, cp);
         }
         else if (inner[i] == '\n')
@@ -1554,6 +1545,112 @@ bool isIgnorableKeyframeProperty(string_view name)
 }  // namespace
 
 // ---------------------------------------------------------------------------
+// Numbers
+// ---------------------------------------------------------------------------
+
+std::optional<double> parseNumberPrefix(string_view text, size_t &consumed)
+{
+    const auto isDigit = [](char c) {
+        return c >= '0' && c <= '9';
+    };
+
+    size_t i = 0;
+    bool negative = false;
+    if (i < text.size() && (text[i] == '+' || text[i] == '-'))
+    {
+        negative = text[i] == '-';
+        i++;
+    }
+
+    // The digits are collected as one integer and a power of ten. A division
+    // by an exact power of ten is correctly rounded, so "0.3" is the same
+    // double that strtod() gives.
+    long double mantissa = 0;
+    int exponent = 0;
+    size_t digits = 0;
+    while (i < text.size() && isDigit(text[i]))
+    {
+        mantissa = mantissa * 10 + (text[i] - '0');
+        digits++;
+        i++;
+    }
+    if (i < text.size() && text[i] == '.')
+    {
+        size_t j = i + 1;
+        size_t fraction = 0;
+        while (j < text.size() && isDigit(text[j]))
+        {
+            mantissa = mantissa * 10 + (text[j] - '0');
+            exponent--;
+            fraction++;
+            j++;
+        }
+        if (digits > 0 || fraction > 0)  // "5." is a number, "." isn't
+        {
+            digits += fraction;
+            i = j;
+        }
+    }
+    if (digits == 0)
+    {
+        return std::nullopt;
+    }
+
+    if (i < text.size() && (text[i] == 'e' || text[i] == 'E'))
+    {
+        // `1em` is a 1 and a unit, `1e3` is a number
+        size_t j = i + 1;
+        bool negativeExponent = false;
+        if (j < text.size() && (text[j] == '+' || text[j] == '-'))
+        {
+            negativeExponent = text[j] == '-';
+            j++;
+        }
+        if (j < text.size() && isDigit(text[j]))
+        {
+            int value = 0;
+            while (j < text.size() && isDigit(text[j]))
+            {
+                value = std::min(value * 10 + (text[j] - '0'), 100000);
+                j++;
+            }
+            exponent += negativeExponent ? -value : value;
+            i = j;
+        }
+    }
+
+    double value = 0;
+    if (mantissa < 9007199254740992.0L && std::abs(exponent) <= 22)
+    {
+        // both are exact doubles, so this one operation is correctly rounded
+        double scale = 1;
+        for (int k = 0; k < std::abs(exponent); k++)
+        {
+            scale *= 10;
+        }
+        value = exponent < 0 ? static_cast<double>(mantissa) / scale
+                             : static_cast<double>(mantissa) * scale;
+    }
+    else
+    {
+        // very long or very large or small: not exact, but close
+        const long double scale = std::pow(10.0L, std::abs(exponent));
+        value = static_cast<double>(exponent < 0 ? mantissa / scale
+                                                 : mantissa * scale);
+    }
+    if (negative)
+    {
+        value = -value;
+    }
+    if (!std::isfinite(value))
+    {
+        return std::nullopt;
+    }
+    consumed = i;
+    return value;
+}
+
+// ---------------------------------------------------------------------------
 // Matrix
 // ---------------------------------------------------------------------------
 
@@ -2434,8 +2531,10 @@ std::optional<Baked> bake(const std::vector<Animation> &animations,
                    s.direction == AnimationSpec::Direction::Normal &&
                    s.iterations == first.iterations;
         });
+    // (`plays` is an int: a count too big for it is baked as a timeline)
     const bool wholeCount =
-        first.infinite() || first.iterations == std::floor(first.iterations);
+        first.infinite() || (first.iterations == std::floor(first.iterations) &&
+                             first.iterations <= 1e6);
     const bool periodic = sameCycle && wholeCount && first.iterations > 1;
 
     if (anyInfinite && !(allInfinite && periodic))

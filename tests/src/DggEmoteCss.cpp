@@ -1,8 +1,11 @@
 #include "providers/dgg/DggEmoteCss.hpp"
 
+#include "providers/dgg/DggCssAnimation.hpp"
 #include "Test.hpp"
 
 #include <algorithm>
+#include <clocale>
+#include <string>
 
 using namespace chatterino;
 
@@ -1158,4 +1161,109 @@ TEST(DggEmoteCss, BonkShakesWhileItStepsThroughItsSheet)
     // and it comes to rest on the first frame, not moved
     EXPECT_EQ(style.sprite.restOffset, QPoint(0, 0));
     EXPECT_TRUE(style.sprite.restPose.isIdentity());
+}
+
+TEST(DggCssAnimation, NumberPrefix)
+{
+    using dggcss::anim::parseNumberPrefix;
+
+    const auto number = [](const char *text, double expected, size_t used) {
+        size_t consumed = 0;
+        const auto value = parseNumberPrefix(text, consumed);
+        ASSERT_TRUE(value.has_value()) << text;
+        EXPECT_EQ(*value, expected) << text;
+        EXPECT_EQ(consumed, used) << text;
+    };
+    number("12", 12, 2);
+    number("-.5", -0.5, 3);
+    number("+1.25px", 1.25, 5);
+    number("5.", 5, 2);
+    number("1e3", 1000, 3);
+    number("1.5E-1s", 0.15, 6);
+    // an exponent needs digits: this is a 1 and the unit `em`
+    number("1em", 1, 1);
+    number("1e+", 1, 1);
+    number("0x10", 0, 1);
+
+    for (const char *text : {"", ".", "+", "-", "e3", "inf", "nan", "--1",
+                             "1e999"})
+    {
+        size_t consumed = 0;
+        EXPECT_FALSE(parseNumberPrefix(text, consumed).has_value()) << text;
+    }
+}
+
+TEST(DggCssAnimation, NumbersDoNotFollowTheCLocale)
+{
+    // Qt sets the locale from the environment on Unix, and a comma as the
+    // decimal separator used to cut "1.5s" short. Where no such locale is
+    // installed this checks the plain case only.
+    const std::string before = std::setlocale(LC_NUMERIC, nullptr);
+    for (const char *name :
+         {"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "fr_FR.utf8"})
+    {
+        if (std::setlocale(LC_NUMERIC, name) != nullptr)
+        {
+            break;
+        }
+    }
+
+    const auto specs = dggcss::anim::parseAnimationList("pulse 1.5s 0.25s");
+    ASSERT_TRUE(specs.has_value());
+    ASSERT_EQ(specs->size(), 1U);
+    EXPECT_EQ((*specs)[0].durationMs, 1500.0);
+    EXPECT_EQ((*specs)[0].delayMs, 250.0);
+
+    std::setlocale(LC_NUMERIC, before.c_str());
+}
+
+TEST(DggCssAnimation, ContentEscapesThatAreNotCodePointsBecomeTheReplacement)
+{
+    const auto bytes = [](const char *css) {
+        const auto parsed = dggcss::anim::parseDeclaration("content", css);
+        EXPECT_TRUE(parsed.has_value()) << css;
+        return parsed
+                   ? std::get<dggcss::anim::Content>(parsed->second).text
+                   : std::string();
+    };
+    const std::string replacement = "\xEF\xBF\xBD";
+    EXPECT_EQ(bytes("'\\110000'"), replacement);
+    EXPECT_EQ(bytes("'\\D800'"), replacement);
+    EXPECT_EQ(bytes("'\\0'"), replacement);
+    EXPECT_EQ(bytes("'\\41 B'"), "AB");
+}
+
+TEST(DggCssAnimation, HugeIterationCountIsNotAPlayCount)
+{
+    using namespace dggcss::anim;
+    const auto specs = parseAnimationList("pulse 1s 10000000000");
+    ASSERT_TRUE(specs.has_value());
+
+    std::string problem;
+    const std::vector<Keyframe> keyframes{
+        {0, {{"opacity", "0"}}},
+        {1, {{"opacity", "1"}}},
+    };
+    const auto animation = Animation::build((*specs)[0], keyframes, problem);
+    ASSERT_TRUE(animation.has_value()) << problem;
+
+    const auto baked = bake({*animation}, Computed{}, Box{32, 32},
+                            BakeOptions{}, problem);
+    ASSERT_TRUE(baked.has_value()) << problem;
+    EXPECT_GE(baked->plays, 0);
+    EXPECT_TRUE(baked->truncated);
+}
+
+TEST(DggEmoteCss, ABrokenStringDoesNotSwallowTheRestOfTheStylesheet)
+{
+    const DggEmoteCss sheet = DggEmoteCss::parse(QStringLiteral(
+        ".emote.Broken::after {\n"
+        "    content: 'oops;\n"
+        "}\n"
+        ".emote.Fine {\n"
+        "    background-image: url(\"fine.png\");\n"
+        "    height: 32px;\n"
+        "    width: 64px;\n"
+        "}\n"));
+    EXPECT_TRUE(sheet.hasEmote(QStringLiteral("Fine")));
 }

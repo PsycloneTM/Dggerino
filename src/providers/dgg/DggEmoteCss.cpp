@@ -99,13 +99,22 @@ std::vector<string> splitTopLevel(string_view s, char sep)
     string cur;
     int depth = 0;
     char quote = 0;
+    bool escaped = false;
 
     for (const char c : s)
     {
         if (quote != 0)
         {
             cur.push_back(c);
-            if (c == quote)
+            if (escaped)
+            {
+                escaped = false;
+            }
+            else if (c == '\\')
+            {
+                escaped = true;
+            }
+            else if (c == quote || c == '\n')  // a newline ends a string
             {
                 quote = 0;
             }
@@ -147,13 +156,22 @@ std::vector<string> splitWhitespace(string_view s)
     string cur;
     int depth = 0;
     char quote = 0;
+    bool escaped = false;
 
     for (const char c : s)
     {
         if (quote != 0)
         {
             cur.push_back(c);
-            if (c == quote)
+            if (escaped)
+            {
+                escaped = false;
+            }
+            else if (c == '\\')
+            {
+                escaped = true;
+            }
+            else if (c == quote || c == '\n')  // a newline ends a string
             {
                 quote = 0;
             }
@@ -201,43 +219,19 @@ std::vector<string> splitWhitespace(string_view s)
 /// Parses a number starting at `pos` and moves `pos` behind it.
 std::optional<double> parseNumberAt(string_view s, size_t &pos)
 {
-    size_t start = pos;
-    if (start < s.size() && s[start] == '+')
-    {
-        // skip a leading plus
-        start++;
-    }
-
-    size_t probe = start;
-    if (probe < s.size() && s[probe] == '-')
-    {
-        probe++;
-    }
-    if (probe >= s.size() || !(isDigit(s[probe]) || s[probe] == '.'))
-    {
-        // also keeps strtod from reading "inf" and "nan"
-        return std::nullopt;
-    }
-
-    // std::from_chars() for doubles needs macOS 26 (Chatterino targets 13),
-    // so this uses strtod(). It would also read hex floats, which CSS doesn't
-    // have.
-    {
-        size_t digits = probe;
-        if (digits + 1 < s.size() && s[digits] == '0' &&
-            (s[digits + 1] == 'x' || s[digits + 1] == 'X'))
-        {
-            return std::nullopt;
-        }
-    }
-    const std::string text(s.substr(start, 64));
-    char *endPtr = nullptr;
-    const double value = std::strtod(text.c_str(), &endPtr);
-    if (endPtr == text.c_str() || !std::isfinite(value))
+    // Not strtod(): that follows the C locale, which Qt sets from the
+    // environment on Unix. See parseNumberPrefix().
+    if (pos > s.size())
     {
         return std::nullopt;
     }
-    pos = start + static_cast<size_t>(endPtr - text.c_str());
+    size_t consumed = 0;
+    const auto value = anim::parseNumberPrefix(s.substr(pos), consumed);
+    if (!value)
+    {
+        return std::nullopt;
+    }
+    pos += consumed;
     return value;
 }
 
@@ -340,8 +334,10 @@ size_t findClosingBrace(string_view s, size_t open)
             {
                 i++;
             }
-            else if (c == quote)
+            else if (c == quote || c == '\n')
             {
+                // A newline ends a string (CSS: "bad string"). Without it a
+                // stray quote would swallow the rest of the stylesheet.
                 quote = 0;
             }
             continue;
@@ -4141,8 +4137,13 @@ bool applyImageLayers(const Props &emote, const Props *beforeProps,
         const string value = toLower(*maskRaw);
         if (std::regex_search(value, m, re))
         {
-            mask =
-                SpriteRadialMask{std::stod(m[1].str()), std::stod(m[2].str())};
+            // `[0-9.]+` also matches "." and "1.2.3"
+            const auto inner = parseNumber(m[1].str());
+            const auto outer = parseNumber(m[2].str());
+            if (inner && outer)
+            {
+                mask = SpriteRadialMask{*inner, *outer};
+            }
         }
     }
     if (!before && !after && !mask)

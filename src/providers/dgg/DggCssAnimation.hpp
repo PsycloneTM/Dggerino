@@ -29,10 +29,20 @@
 ///    iteration counts, `direction`, `fill-mode`.
 ///
 /// Not supported (the emote is then left alone, and the reason is reported):
-/// anything that moves other layout (`left`, `top`, `margin`, `width`, ...),
-/// `mask-image`, `box-shadow`, `drop-shadow()`/`blur()` filters, 3D
-/// transforms, `background-position` (that's what the sprite code is for).
+/// anything that moves other layout (`margin`, ...), `mask-image`, `blur()`
+/// filters, 3D transforms, `background-position` (that's what the sprite code
+/// is for). The box properties (`left`, `top`, `width`, ...), `box-shadow`
+/// and `drop-shadow()` are only understood for `::before` / `::after` boxes
+/// and filters, see bakeLayers().
 namespace chatterino::dggcss::anim {
+
+/// The CSS number at the start of `text` (`12`, `-.5`, `1.5e3`), and how many
+/// characters it takes. This doesn't use strtod(): that one reads the decimal
+/// separator of the C locale, and Qt sets that from the environment on Unix,
+/// so under e.g. de_DE "1.5s" would stop after the "1". Nothing is returned
+/// if `text` doesn't start with a number (`inf`, `nan` and hex don't count).
+std::optional<double> parseNumberPrefix(std::string_view text,
+                                        size_t &consumed);
 
 // ---------------------------------------------------------------------------
 // Values
