@@ -8,8 +8,8 @@ import argparse
 ROOT_DOWNLOAD_URL = (
     "https://github.com/PsycloneTM/Dggerino/releases/download/nightly-build"
 )
-WIN_X64_INSTALLERS = ["ChatterinoDGG.Nightly.Installer.exe"]
-WIN_ARM64_INSTALLERS = ["Experimental-ARM64-ChatterinoDGG.Nightly.Installer.exe"]
+WIN_X64_INSTALLERS = ["Dggerino.Nightly.Installer.exe"]
+WIN_ARM64_INSTALLERS = ["Experimental-ARM64-Dggerino.Nightly.Installer.exe"]
 
 
 def create_artifacts_table(artifact_dir: str, include_installer: bool):
@@ -131,7 +131,7 @@ print("> [!WARNING]")
 print(
     "> This is an experimental version that may break. "
     "If you're looking for the latest stable release, see "
-    f"https://github.com/SevenTV/chatterino7/releases/tag/{get_current_stable()}.\n"
+    f"https://github.com/PsycloneTM/dggerino/releases/tag/{get_current_stable()}.\n"
 )
 
 print("### Downloads\n")
