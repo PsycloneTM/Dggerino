@@ -37,7 +37,8 @@ HighlightCheck YourUsernameHighlight::buildCheck() const
     };
 
     const auto twitchUser = getApp()->getAccounts()->twitch.getCurrent();
-    const auto twitchRe = nameRe(twitchUser->isAnon(), twitchUser->getUserName());
+    const auto twitchRe =
+        nameRe(twitchUser->isAnon(), twitchUser->getUserName());
 
     const auto kickUser = getApp()->getAccounts()->kick.current();
     const auto kickRe = nameRe(kickUser->isAnonymous(), kickUser->username());

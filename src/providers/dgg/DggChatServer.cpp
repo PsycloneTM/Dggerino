@@ -537,10 +537,10 @@ void DggChatServer::onAccountChanged()
     }
 
     const auto account = getApp()->getAccounts()->dgg.current();
-    this->restartSocket(*chan, account->isAnonymous()
-                                   ? u"Logged out. Reconnecting as Guest..."_s
-                                   : u"Reconnecting as %1..."_s.arg(
-                                         account->username()));
+    this->restartSocket(
+        *chan, account->isAnonymous()
+                   ? u"Logged out. Reconnecting as Guest..."_s
+                   : u"Reconnecting as %1..."_s.arg(account->username()));
 }
 
 void DggChatServer::reconnect()
@@ -1271,19 +1271,17 @@ void DggChatServer::handleFrame(const DggFrame &frame)
         {
             chan->addMessage(
                 DggMessageBuilder::makeReconnectLine(
-                    chan.get(), QDateTime::currentDateTime(),
-                    dggErrorText(obj),
+                    chan.get(), QDateTime::currentDateTime(), dggErrorText(obj),
                     u"If you believe you have been unbanned, try "
                     u"reconnecting."_s),
                 MessageContext::Original);
         }
         else if (description == "toomanyconnections"_L1)
         {
-            chan->addMessage(
-                DggMessageBuilder::makeReconnectLine(
-                    chan.get(), QDateTime::currentDateTime(),
-                    dggErrorText(obj), u"Try reconnecting."_s),
-                MessageContext::Original);
+            chan->addMessage(DggMessageBuilder::makeReconnectLine(
+                                 chan.get(), QDateTime::currentDateTime(),
+                                 dggErrorText(obj), u"Try reconnecting."_s),
+                             MessageContext::Original);
         }
         else
         {
