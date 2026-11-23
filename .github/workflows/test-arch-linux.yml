@@ -9,7 +9,7 @@ on:
     branches:
       - master
       - main
-      - chatterino7
+      - dgg
 
 env:
   TWITCH_PUBSUB_SERVER_TAG: v1.0.12
