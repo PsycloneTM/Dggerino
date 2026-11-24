@@ -869,8 +869,7 @@ void DggChatServer::handleFrame(const DggFrame &frame)
     // that the list of those names stays in one place, DggMessage.cpp. None
     // of them is also in this table.
     using Handler = void (DggChatServer::*)(const FrameContext &);
-    struct Entry
-    {
+    struct Entry {
         QLatin1String name;
         Handler handler;
     };
@@ -985,9 +984,9 @@ void DggChatServer::onModeration(const FrameContext &ctx)
     }
 
     const auto timestampMs = dggTimestampMs(obj, ctx.nowMs);
-    const auto key = u"%1|%2|%3|%4"_s.arg(
-        name, QString::number(timestampMs), obj.value("data"_L1).toString(),
-        obj.value("nick"_L1).toString());
+    const auto key = u"%1|%2|%3|%4"_s.arg(name, QString::number(timestampMs),
+                                          obj.value("data"_L1).toString(),
+                                          obj.value("nick"_L1).toString());
     if (!chan.markSeen(key))
     {
         return;
@@ -1005,20 +1004,19 @@ void DggChatServer::onModeration(const FrameContext &ctx)
     const auto time = QDateTime::fromMSecsSinceEpoch(timestampMs);
     if (name == "SUBONLY"_L1)
     {
-        chan.addMessage(DggMessageBuilder::makeSystemLine(
-                            &chan, time, text, frame.backlog, true),
+        chan.addMessage(DggMessageBuilder::makeSystemLine(&chan, time, text,
+                                                          frame.backlog, true),
                         MessageContext::Original);
     }
     else
     {
         // the target and the moderator are clickable names
         const auto moderator = DggUser::fromJson(obj);
-        chan.addMessage(
-            DggMessageBuilder::makeModerationLine(
-                &chan, time, text, obj.value("data"_L1).toString(),
-                moderator.isSystem() ? QString() : moderator.nick,
-                frame.backlog),
-            MessageContext::Original);
+        chan.addMessage(DggMessageBuilder::makeModerationLine(
+                            &chan, time, text, obj.value("data"_L1).toString(),
+                            moderator.isSystem() ? QString() : moderator.nick,
+                            frame.backlog),
+                        MessageContext::Original);
     }
 }
 
@@ -1034,9 +1032,8 @@ void DggChatServer::onDeath(const FrameContext &ctx)
         return;
     }
 
-    const auto key =
-        u"DEATH|%1|%2|%3"_s.arg(QString::number(death->timestampMs),
-                                death->user.nick, death->cause);
+    const auto key = u"DEATH|%1|%2|%3"_s.arg(
+        QString::number(death->timestampMs), death->user.nick, death->cause);
     if (!chan.markSeen(key))
     {
         return;
@@ -1099,8 +1096,8 @@ void DggChatServer::onXPost(const FrameContext &ctx)
     }
 
     this->endCombo(chan);
-    auto [message, alert] = DggMessageBuilder::makeXPostMessage(
-        &chan, *post, ctx.frame.backlog);
+    auto [message, alert] =
+        DggMessageBuilder::makeXPostMessage(&chan, *post, ctx.frame.backlog);
     this->addAlertingLine(chan, message, alert, ctx.frame.backlog);
 }
 
@@ -1115,12 +1112,11 @@ void DggChatServer::onVestaboard(const FrameContext &ctx)
         return;
     }
 
-    const auto id =
-        board->uuid.isEmpty()
-            ? u"%1|%2|%3"_s.arg(QString::number(board->timestampMs),
-                                board->submitter,
-                                QString::number(board->totalCents))
-            : board->uuid;
+    const auto id = board->uuid.isEmpty()
+                        ? u"%1|%2|%3"_s.arg(QString::number(board->timestampMs),
+                                            board->submitter,
+                                            QString::number(board->totalCents))
+                        : board->uuid;
     if (!chan.markSeen(u"VESTABOARD|%1|%2"_s.arg(name, id)))
     {
         return;
@@ -1147,11 +1143,10 @@ void DggChatServer::onSiteEvent(const FrameContext &ctx)
         return;
     }
 
-    const auto id =
-        event->uuid.isEmpty()
-            ? u"%1|%2|%3"_s.arg(QString::number(event->timestampMs),
-                                event->user.nick, event->text)
-            : event->uuid;
+    const auto id = event->uuid.isEmpty()
+                        ? u"%1|%2|%3"_s.arg(QString::number(event->timestampMs),
+                                            event->user.nick, event->text)
+                        : event->uuid;
     if (!chan.markSeen(u"EVENT|%1|%2"_s.arg(name, id)))
     {
         return;
@@ -1222,15 +1217,14 @@ void DggChatServer::onPin(const FrameContext &ctx)
         if (!frame.backlog)
         {
             this->endCombo(chan);
-            chan.addMessage(
-                DggMessageBuilder::makeSystemLine(
-                    &chan, QDateTime::currentDateTime(),
-                    pin.user.nick.isEmpty()
-                        ? u"The pinned message was removed."_s
-                        : u"%1 removed the pinned message."_s.arg(
-                              pin.user.nick),
-                    false, false),
-                MessageContext::Original);
+            chan.addMessage(DggMessageBuilder::makeSystemLine(
+                                &chan, QDateTime::currentDateTime(),
+                                pin.user.nick.isEmpty()
+                                    ? u"The pinned message was removed."_s
+                                    : u"%1 removed the pinned message."_s.arg(
+                                          pin.user.nick),
+                                false, false),
+                            MessageContext::Original);
         }
         return;
     }

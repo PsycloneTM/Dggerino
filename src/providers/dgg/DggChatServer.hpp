@@ -135,8 +135,7 @@ private:
     void onFrame(const DggFrame &frame);
 
     /// What a handler below needs to know about the frame it handles.
-    struct FrameContext
-    {
+    struct FrameContext {
         DggChannel &chan;
         const DggFrame &frame;
         /// `frame.payload` as an object (empty if it is not one).

@@ -139,8 +139,8 @@ struct DggEventHighlight {
         using Params = HighlightCheckParams;
 
         return {
-            [highlight = *this](
-                const Params &p) -> std::optional<HighlightResult> {
+            [highlight =
+                 *this](const Params &p) -> std::optional<HighlightResult> {
                 if (!p.messageFlags.has(Traits::FLAG))
                 {
                     return std::nullopt;
@@ -153,9 +153,9 @@ struct DggEventHighlight {
 
     friend QDebug operator<<(QDebug dbg, const DggEventHighlight &v)
     {
-        dbg.nospace() << "DggEventHighlight("        //
-                      << "id:" << ID                  //
-                      << ',' << "name:" << v.name     //
+        dbg.nospace() << "DggEventHighlight("            //
+                      << "id:" << ID                     //
+                      << ',' << "name:" << v.name        //
                       << ',' << "enabled:" << v.enabled  //
                       << ',' << "outcome:" << v.outcome  //
                       << ')';
