@@ -9,13 +9,7 @@
 #include "controllers/highlights/types/AutomodCaughtHighlight.hpp"  // IWYU pragma: export
 #include "controllers/highlights/types/BadgeHighlight.hpp"  // IWYU pragma: export
 #include "controllers/highlights/types/ChannelPointsHighlight.hpp"  // IWYU pragma: export
-#include "controllers/highlights/types/DggBroadcastHighlight.hpp"  // IWYU pragma: export
-#include "controllers/highlights/types/DggDonationHighlight.hpp"  // IWYU pragma: export
-#include "controllers/highlights/types/DggGiftHighlight.hpp"  // IWYU pragma: export
-#include "controllers/highlights/types/DggSpotlightHighlight.hpp"  // IWYU pragma: export
-#include "controllers/highlights/types/DggSubscriptionHighlight.hpp"  // IWYU pragma: export
-#include "controllers/highlights/types/DggVestaboardHighlight.hpp"  // IWYU pragma: export
-#include "controllers/highlights/types/DggXPostHighlight.hpp"  // IWYU pragma: export
+#include "controllers/highlights/types/DggEventHighlight.hpp"  // IWYU pragma: export
 #include "controllers/highlights/types/FilterHighlight.hpp"  // IWYU pragma: export
 #include "controllers/highlights/types/FirstMessageHighlight.hpp"  // IWYU pragma: export
 #include "controllers/highlights/types/InvalidHighlight.hpp"  // IWYU pragma: export

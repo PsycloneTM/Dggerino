@@ -25,13 +25,23 @@ struct UserHighlight;
 struct BadgeHighlight;
 struct LowTrustUserHighlight;
 struct UncategorizedNotificationHighlight;
-struct DggSubscriptionHighlight;
-struct DggGiftHighlight;
-struct DggDonationHighlight;
-struct DggSpotlightHighlight;
-struct DggBroadcastHighlight;
-struct DggXPostHighlight;
-struct DggVestaboardHighlight;
+// The destiny.gg highlights: one template, see DggEventHighlight.hpp
+template <typename Traits>
+struct DggEventHighlight;
+struct DggSubscriptionTraits;
+struct DggGiftTraits;
+struct DggDonationTraits;
+struct DggSpotlightTraits;
+struct DggBroadcastTraits;
+struct DggXPostTraits;
+struct DggVestaboardTraits;
+using DggSubscriptionHighlight = DggEventHighlight<DggSubscriptionTraits>;
+using DggGiftHighlight = DggEventHighlight<DggGiftTraits>;
+using DggDonationHighlight = DggEventHighlight<DggDonationTraits>;
+using DggSpotlightHighlight = DggEventHighlight<DggSpotlightTraits>;
+using DggBroadcastHighlight = DggEventHighlight<DggBroadcastTraits>;
+using DggXPostHighlight = DggEventHighlight<DggXPostTraits>;
+using DggVestaboardHighlight = DggEventHighlight<DggVestaboardTraits>;
 
 // clang-format off
 /// Variant of all types of highlights.

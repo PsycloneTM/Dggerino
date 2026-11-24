@@ -38,36 +38,6 @@ using namespace Qt::Literals;
 
 namespace {
 
-/// A request to the site. With `withKey` (cleared if there is no key to send)
-/// the logged-in account's login key goes along as the `authtoken` cookie, the
-/// way the chat socket takes it. The URLs only hold a nick, so the key never
-/// reaches a log; the `Cookie` header isn't logged either.
-NetworkRequest makeSiteRequest(const QUrl &url, bool &withKey)
-{
-    auto request = NetworkRequest(url);
-    if (!withKey)
-    {
-        return request;
-    }
-
-    const auto account = getApp()->getAccounts()->dgg.current();
-    if (account && !account->loginKey().isEmpty())
-    {
-        return std::move(request).header(
-            "Cookie", ("authtoken=" + account->loginKey()).toUtf8());
-    }
-
-    withKey = false;
-    return request;
-}
-
-/// Whether the site refused the login key (rather than the request failing).
-bool isAuthRefusal(const NetworkResult &result)
-{
-    const auto status = result.status().value_or(0);
-    return status == 401 || status == 403;
-}
-
 /// chat-gui's message limit, counted in code points
 constexpr qsizetype MAX_MESSAGE_LENGTH = 512;
 
@@ -82,55 +52,38 @@ void sayDggError(DggChannel &chan, const char *code)
         dggErrorText(QJsonObject{{"description"_L1, QLatin1String(code)}}));
 }
 
-/// `withKey`: see makeSiteRequest().
+/// The two site endpoints below only take a nick and answer without logging
+/// in (chat-gui calls them for guests too), so they are asked anonymously: the
+/// login key is sent to the chat socket and nowhere else.
 void fetchUserInfo(
-    const QString &nick, bool withKey,
+    const QString &nick,
     std::function<void(const std::optional<DggProfile> &, int status)> done)
 {
-    auto request = makeSiteRequest(dggUserInfoUrl(nick), withKey);
-
-    std::move(request)
+    NetworkRequest(dggUserInfoUrl(nick))
         .onSuccess([done](NetworkResult result) {
             const auto profile = parseDggUserInfo(result.parseJson());
             done(profile, result.status().value_or(0));
         })
-        .onError([nick, withKey, done](const NetworkResult &result) {
-            if (withKey && isAuthRefusal(result))
-            {
-                // Whether the site accepts the key on this endpoint was never
-                // tested (it refuses it on the whisper ones): ask again
-                // without it, the way a guest does.
-                fetchUserInfo(nick, false, done);
-                return;
-            }
+        .onError([done](const NetworkResult &result) {
             done(std::nullopt, result.status().value_or(0));
         })
         .execute();
 }
 
-/// Asks the site for the mentions at `url`. Like fetchUserInfo(): when
-/// `withKey` the login key goes along as the `authtoken` cookie, and an
-/// answer of 401/403 is asked for again without it. `done` gets the parsed
-/// answer (nullopt if the site said no or sent junk), and `failed` is true if
-/// no usable HTTP answer arrived at all.
+/// Asks the site for the mentions at `url`. `done` gets the parsed answer
+/// (nullopt if the site said no or sent junk), and `failed` is true if no
+/// usable HTTP answer arrived at all.
 void fetchMentionsFromSite(
-    const QUrl &url, bool withKey,
+    const QUrl &url,
     std::function<void(const std::optional<std::vector<DggMention>> &,
                        bool failed)>
         done)
 {
-    auto request = makeSiteRequest(url, withKey);
-
-    std::move(request)
+    NetworkRequest(url)
         .onSuccess([done](NetworkResult result) {
             done(parseDggMentions(result.parseJson()), false);
         })
-        .onError([url, withKey, done](const NetworkResult &result) {
-            if (withKey && isAuthRefusal(result))
-            {
-                fetchMentionsFromSite(url, false, done);
-                return;
-            }
+        .onError([done](const NetworkResult &) {
             done(std::nullopt, true);
         })
         .execute();
@@ -142,8 +95,7 @@ void dggFetchUserInfo(
     const QString &nick,
     std::function<void(const std::optional<DggProfile> &, int status)> done)
 {
-    fetchUserInfo(nick, getApp()->getAccounts()->dgg.isLoggedIn(),
-                  std::move(done));
+    fetchUserInfo(nick, std::move(done));
 }
 
 namespace {
@@ -501,11 +453,13 @@ void DggChatServer::onSocketClosed(std::chrono::milliseconds retryIn)
     }
 }
 
-void DggChatServer::onMe(DggChannel &chan, const QJsonObject &payload)
+void DggChatServer::onMe(const FrameContext &ctx)
 {
+    auto &chan = ctx.chan;
+
     // A guest gets `ME` without a user. A logged-in user's `ME` is their user
     // object: `nick` is the name as they spell it.
-    const auto nick = payload.value("nick"_L1).toString();
+    const auto nick = ctx.obj.value("nick"_L1).toString();
     this->authenticated_ = !nick.isEmpty();
 
     this->endCombo(chan);
@@ -782,7 +736,6 @@ void DggChatServer::fetchMentions(DggChannel &chan, const QString &args)
 
     fetchMentionsFromSite(
         dggMentionsUrl(nick, parsed.limit),
-        getApp()->getAccounts()->dgg.isLoggedIn(),
         [self, weakChan, nick](
             const std::optional<std::vector<DggMention>> &mentions,
             bool failed) {
@@ -903,456 +856,568 @@ void DggChatServer::handleFrame(const DggFrame &frame)
     }
 
     const auto obj = frame.payload.toObject();
-    const auto nowMs = QDateTime::currentMSecsSinceEpoch();
+    const FrameContext ctx{
+        *chan,
+        frame,
+        obj,
+        QDateTime::currentMSecsSinceEpoch(),
+    };
+
+    // A null handler is an event that is known and needs nothing done.
+    // The names of the events that come in several variants are not listed
+    // here but tested below (`isDggVestaboardName`, `isDggEventName`), so
+    // that the list of those names stays in one place, DggMessage.cpp. None
+    // of them is also in this table.
+    using Handler = void (DggChatServer::*)(const FrameContext &);
+    struct Entry
+    {
+        QLatin1String name;
+        Handler handler;
+    };
+    static const Entry TABLE[] = {
+        {"MSG"_L1, &DggChatServer::onChatMessage},
+        {"MUTE"_L1, &DggChatServer::onModeration},
+        {"UNMUTE"_L1, &DggChatServer::onModeration},
+        {"BAN"_L1, &DggChatServer::onModeration},
+        {"UNBAN"_L1, &DggChatServer::onModeration},
+        {"SUBONLY"_L1, &DggChatServer::onModeration},
+        {"DEATH"_L1, &DggChatServer::onDeath},
+        {"BROADCAST"_L1, &DggChatServer::onBroadcast},
+        {"XPOST"_L1, &DggChatServer::onXPost},
+        {"PIN"_L1, &DggChatServer::onPin},
+        {"POLLSTART"_L1, &DggChatServer::onPoll},
+        {"POLLSTOP"_L1, &DggChatServer::onPoll},
+        {"VOTECAST"_L1, &DggChatServer::onPoll},
+        {"VOTECOUNTED"_L1, &DggChatServer::onPoll},
+        {"NAMES"_L1, &DggChatServer::onNames},
+        {"ME"_L1, &DggChatServer::onMe},
+        {"PRIVMSG"_L1, &DggChatServer::onWhisper},
+        // Has no payload; sendWhisper() already showed the line
+        {"PRIVMSGSENT"_L1, nullptr},
+        {"ERR"_L1, &DggChatServer::onError},
+        {"REFRESHCHATASSETS"_L1, &DggChatServer::onRefreshAssets},
+        {"UPDATEUSER"_L1, &DggChatServer::onUserUpdated},
+        {"JOIN"_L1, &DggChatServer::onUserPresence},
+        {"QUIT"_L1, &DggChatServer::onUserPresence},
+        {"USERSDELTA"_L1, &DggChatServer::onUserPresence},
+    };
+
+    for (const auto &entry : TABLE)
+    {
+        if (frame.name == entry.name)
+        {
+            if (entry.handler)
+            {
+                (this->*entry.handler)(ctx);
+            }
+            return;
+        }
+    }
+
+    if (isDggVestaboardName(frame.name))
+    {
+        this->onVestaboard(ctx);
+    }
+    else if (isDggEventName(frame.name))
+    {
+        this->onSiteEvent(ctx);
+    }
+    else
+    {
+        qCDebug(chatterinoDgg) << "Unhandled event" << frame.name;
+    }
+}
+
+void DggChatServer::onChatMessage(const FrameContext &ctx)
+{
+    auto &chan = ctx.chan;
+    const auto &frame = ctx.frame;
+
+    auto msg = parseDggChatMessage(ctx.obj, ctx.nowMs);
+    if (!msg)
+    {
+        return;
+    }
+    if (!chan.markSeen(msg->hash))
+    {
+        // Already shown, e.g. in the backlog of a reconnect
+        return;
+    }
+
+    chan.noteUser(msg->user);
+
+    // The same emote again and again becomes one counting line
+    const auto textOnly = dggStripSlashCommand(msg->rawText);
+    if (this->continueCombo(chan, *msg, textOnly, frame.backlog))
+    {
+        return;
+    }
+    // Anything else completes the combo that was running
+    this->endCombo(chan);
+
+    HighlightAlert alert;
+    const MessagePtr line = DggMessageBuilder::makeChatMessage(
+        &chan, *msg, frame.backlog, *this->assets_, &alert);
+    MessageBuilder::triggerHighlights(&chan, alert);
+    chan.addMessage(line, MessageContext::Original);
+
+    ComboState state;
+    state.text = textOnly;
+    state.shown = line;
+    state.firstTime = msg->time();
+    state.firstId = msg->hash;
+    state.backlog = frame.backlog;
+    this->combo_ = std::move(state);
+}
+
+void DggChatServer::onModeration(const FrameContext &ctx)
+{
+    auto &chan = ctx.chan;
+    const auto &frame = ctx.frame;
+    const auto &obj = ctx.obj;
     const auto &name = frame.name;
 
-    if (name == "MSG"_L1)
+    const auto text = name == "SUBONLY"_L1 ? dggSubOnlyText(obj)
+                                           : dggModerationText(name, obj);
+    if (text.isEmpty())
     {
-        auto msg = parseDggChatMessage(obj, nowMs);
-        if (!msg)
-        {
-            return;
-        }
-        if (!chan->markSeen(msg->hash))
-        {
-            // Already shown, e.g. in the backlog of a reconnect
-            return;
-        }
-
-        chan->noteUser(msg->user);
-
-        // The same emote again and again becomes one counting line
-        const auto textOnly = dggStripSlashCommand(msg->rawText);
-        if (this->continueCombo(*chan, *msg, textOnly, frame.backlog))
-        {
-            return;
-        }
-        // Anything else completes the combo that was running
-        this->endCombo(*chan);
-
-        HighlightAlert alert;
-        const MessagePtr line = DggMessageBuilder::makeChatMessage(
-            chan.get(), *msg, frame.backlog, *this->assets_, &alert);
-        MessageBuilder::triggerHighlights(chan.get(), alert);
-        chan->addMessage(line, MessageContext::Original);
-
-        ComboState state;
-        state.text = textOnly;
-        state.shown = line;
-        state.firstTime = msg->time();
-        state.firstId = msg->hash;
-        state.backlog = frame.backlog;
-        this->combo_ = std::move(state);
+        return;
     }
-    else if (name == "MUTE"_L1 || name == "UNMUTE"_L1 || name == "BAN"_L1 ||
-             name == "UNBAN"_L1 || name == "SUBONLY"_L1)
+
+    const auto timestampMs = dggTimestampMs(obj, ctx.nowMs);
+    const auto key = u"%1|%2|%3|%4"_s.arg(
+        name, QString::number(timestampMs), obj.value("data"_L1).toString(),
+        obj.value("nick"_L1).toString());
+    if (!chan.markSeen(key))
     {
-        const auto text = name == "SUBONLY"_L1 ? dggSubOnlyText(obj)
-                                               : dggModerationText(name, obj);
-        if (text.isEmpty())
-        {
-            return;
-        }
-
-        const auto timestampMs = dggTimestampMs(obj, nowMs);
-        const auto key = u"%1|%2|%3|%4"_s.arg(
-            name, QString::number(timestampMs), obj.value("data"_L1).toString(),
-            obj.value("nick"_L1).toString());
-        if (!chan->markSeen(key))
-        {
-            return;
-        }
-
-        // A muted or banned user's earlier messages are greyed out, like a
-        // timeout on Twitch. Only once per event: the key above is what keeps
-        // a replayed backlog from doing it twice.
-        if (name == "MUTE"_L1 || name == "BAN"_L1)
-        {
-            chan->disableMessagesFrom(obj.value("data"_L1).toString());
-        }
-
-        this->endCombo(*chan);
-        const auto time = QDateTime::fromMSecsSinceEpoch(timestampMs);
-        if (name == "SUBONLY"_L1)
-        {
-            chan->addMessage(DggMessageBuilder::makeSystemLine(
-                                 chan.get(), time, text, frame.backlog, true),
-                             MessageContext::Original);
-        }
-        else
-        {
-            // the target and the moderator are clickable names
-            const auto moderator = DggUser::fromJson(obj);
-            chan->addMessage(
-                DggMessageBuilder::makeModerationLine(
-                    chan.get(), time, text, obj.value("data"_L1).toString(),
-                    moderator.isSystem() ? QString() : moderator.nick,
-                    frame.backlog),
-                MessageContext::Original);
-        }
+        return;
     }
-    else if (name == "DEATH"_L1)
+
+    // A muted or banned user's earlier messages are greyed out, like a
+    // timeout on Twitch. Only once per event: the key above is what keeps
+    // a replayed backlog from doing it twice.
+    if (name == "MUTE"_L1 || name == "BAN"_L1)
     {
-        // The dead user is the event's own user (`data` is the cause), and
-        // they're silenced for `duration` seconds like with a mute.
-        const auto death = parseDggDeath(obj, nowMs);
-        if (!death)
-        {
-            return;
-        }
-
-        const auto key =
-            u"DEATH|%1|%2|%3"_s.arg(QString::number(death->timestampMs),
-                                    death->user.nick, death->cause);
-        if (!chan->markSeen(key))
-        {
-            return;
-        }
-
-        // Grey out their earlier messages, like for a mute
-        chan->disableMessagesFrom(death->user.nick);
-
-        this->endCombo(*chan);
-        chan->addMessage(DggMessageBuilder::makeDeathMessage(
-                             chan.get(), *death, frame.backlog, *this->assets_),
-                         MessageContext::Original);
+        chan.disableMessagesFrom(obj.value("data"_L1).toString());
     }
-    else if (name == "BROADCAST"_L1)
+
+    this->endCombo(chan);
+    const auto time = QDateTime::fromMSecsSinceEpoch(timestampMs);
+    if (name == "SUBONLY"_L1)
     {
-        const auto text = obj.value("data"_L1).toString();
-        if (text.isEmpty())
-        {
-            return;
-        }
-
-        const auto timestampMs = dggTimestampMs(obj, nowMs);
-        const auto uuid = obj.value("uuid"_L1).toString();
-        const auto key = u"BROADCAST|%1|%2"_s.arg(uuid.isEmpty() ? text : uuid,
-                                                  QString::number(timestampMs));
-        if (!chan->markSeen(key))
-        {
-            return;
-        }
-
-        this->endCombo(*chan);
-        auto [message, alert] = DggMessageBuilder::makeBroadcastMessage(
-            chan.get(), QDateTime::fromMSecsSinceEpoch(timestampMs),
-            DggUser::fromJson(obj.value("user"_L1).toObject()), text,
-            frame.backlog, *this->assets_);
-        this->addAlertingLine(*chan, message, alert, frame.backlog);
+        chan.addMessage(DggMessageBuilder::makeSystemLine(
+                            &chan, time, text, frame.backlog, true),
+                        MessageContext::Original);
     }
-    else if (name == "XPOST"_L1)
+    else
     {
-        const auto post = parseDggXPost(obj, nowMs);
-        if (!post)
-        {
-            return;
-        }
-
-        const auto id =
-            post->uuid.isEmpty()
-                ? u"%1|%2"_s.arg(QString::number(post->timestampMs), post->url)
-                : post->uuid;
-        if (!chan->markSeen(u"XPOST|%1"_s.arg(id)))
-        {
-            return;
-        }
-
-        this->endCombo(*chan);
-        auto [message, alert] = DggMessageBuilder::makeXPostMessage(
-            chan.get(), *post, frame.backlog);
-        this->addAlertingLine(*chan, message, alert, frame.backlog);
+        // the target and the moderator are clickable names
+        const auto moderator = DggUser::fromJson(obj);
+        chan.addMessage(
+            DggMessageBuilder::makeModerationLine(
+                &chan, time, text, obj.value("data"_L1).toString(),
+                moderator.isSystem() ? QString() : moderator.nick,
+                frame.backlog),
+            MessageContext::Original);
     }
-    else if (isDggVestaboardName(name))
+}
+
+void DggChatServer::onDeath(const FrameContext &ctx)
+{
+    auto &chan = ctx.chan;
+
+    // The dead user is the event's own user (`data` is the cause), and
+    // they're silenced for `duration` seconds like with a mute.
+    const auto death = parseDggDeath(ctx.obj, ctx.nowMs);
+    if (!death)
     {
-        const auto board = parseDggVestaboard(name, obj, nowMs);
-        if (!board)
-        {
-            return;
-        }
-
-        const auto id =
-            board->uuid.isEmpty()
-                ? u"%1|%2|%3"_s.arg(QString::number(board->timestampMs),
-                                    board->submitter,
-                                    QString::number(board->totalCents))
-                : board->uuid;
-        if (!chan->markSeen(u"VESTABOARD|%1|%2"_s.arg(name, id)))
-        {
-            return;
-        }
-
-        this->endCombo(*chan);
-        auto [message, alert] = DggMessageBuilder::makeVestaboardMessage(
-            chan.get(), *board, frame.backlog, *this->assets_);
-        this->addAlertingLine(*chan, message, alert, frame.backlog);
+        return;
     }
-    else if (isDggEventName(name))
+
+    const auto key =
+        u"DEATH|%1|%2|%3"_s.arg(QString::number(death->timestampMs),
+                                death->user.nick, death->cause);
+    if (!chan.markSeen(key))
     {
-        // Subscriptions, gifts, donations and spotlights. The site also
-        // replays them as `PAIDEVENTS` / `SPOTLIGHTS` for its event bar,
-        // which are not handled here (they'd only repeat lines).
-        const auto event = parseDggEvent(name, obj, nowMs);
-        if (!event)
-        {
-            return;
-        }
+        return;
+    }
 
-        const auto id =
-            event->uuid.isEmpty()
-                ? u"%1|%2|%3"_s.arg(QString::number(event->timestampMs),
-                                    event->user.nick, event->text)
-                : event->uuid;
-        if (!chan->markSeen(u"EVENT|%1|%2"_s.arg(name, id)))
-        {
-            return;
-        }
+    // Grey out their earlier messages, like for a mute
+    chan.disableMessagesFrom(death->user.nick);
 
-        this->endCombo(*chan);
+    this->endCombo(chan);
+    chan.addMessage(DggMessageBuilder::makeDeathMessage(
+                        &chan, *death, ctx.frame.backlog, *this->assets_),
+                    MessageContext::Original);
+}
 
-        // A spotlight shows the message it quotes, so while that message is
-        // still in chat the spotlight takes its place (and its time) instead
-        // of the text being there twice. The line is found by its id, the
-        // hash the spotlight carries as `key`. Only a line by the same author
-        // counts, so a combo line, which has the id of the message it started
-        // with, is never replaced. When the message is gone (older than what
-        // chat holds, sent before we connected) the spotlight is a new line.
-        MessagePtr original;
-        auto shown = *event;
-        if (event->kind == DggEvent::Kind::Spotlight &&
-            !event->messageKey.isEmpty())
-        {
-            original = chan->findMessageByID(event->messageKey);
-            if (original && original->loginName != event->user.nick.toLower())
-            {
-                original.reset();
-            }
-            if (original)
-            {
-                shown.timestampMs = original->timestamp.toMSecsSinceEpoch();
-            }
-        }
+void DggChatServer::onBroadcast(const FrameContext &ctx)
+{
+    auto &chan = ctx.chan;
+    const auto &obj = ctx.obj;
 
-        auto [message, alert] = DggMessageBuilder::makeEventMessage(
-            chan.get(), shown, frame.backlog, *this->assets_);
-        if (event->kind == DggEvent::Kind::Spotlight)
+    const auto text = obj.value("data"_L1).toString();
+    if (text.isEmpty())
+    {
+        return;
+    }
+
+    const auto timestampMs = dggTimestampMs(obj, ctx.nowMs);
+    const auto uuid = obj.value("uuid"_L1).toString();
+    const auto key = u"BROADCAST|%1|%2"_s.arg(uuid.isEmpty() ? text : uuid,
+                                              QString::number(timestampMs));
+    if (!chan.markSeen(key))
+    {
+        return;
+    }
+
+    this->endCombo(chan);
+    auto [message, alert] = DggMessageBuilder::makeBroadcastMessage(
+        &chan, QDateTime::fromMSecsSinceEpoch(timestampMs),
+        DggUser::fromJson(obj.value("user"_L1).toObject()), text,
+        ctx.frame.backlog, *this->assets_);
+    this->addAlertingLine(chan, message, alert, ctx.frame.backlog);
+}
+
+void DggChatServer::onXPost(const FrameContext &ctx)
+{
+    auto &chan = ctx.chan;
+
+    const auto post = parseDggXPost(ctx.obj, ctx.nowMs);
+    if (!post)
+    {
+        return;
+    }
+
+    const auto id =
+        post->uuid.isEmpty()
+            ? u"%1|%2"_s.arg(QString::number(post->timestampMs), post->url)
+            : post->uuid;
+    if (!chan.markSeen(u"XPOST|%1"_s.arg(id)))
+    {
+        return;
+    }
+
+    this->endCombo(chan);
+    auto [message, alert] = DggMessageBuilder::makeXPostMessage(
+        &chan, *post, ctx.frame.backlog);
+    this->addAlertingLine(chan, message, alert, ctx.frame.backlog);
+}
+
+void DggChatServer::onVestaboard(const FrameContext &ctx)
+{
+    auto &chan = ctx.chan;
+    const auto &name = ctx.frame.name;
+
+    const auto board = parseDggVestaboard(name, ctx.obj, ctx.nowMs);
+    if (!board)
+    {
+        return;
+    }
+
+    const auto id =
+        board->uuid.isEmpty()
+            ? u"%1|%2|%3"_s.arg(QString::number(board->timestampMs),
+                                board->submitter,
+                                QString::number(board->totalCents))
+            : board->uuid;
+    if (!chan.markSeen(u"VESTABOARD|%1|%2"_s.arg(name, id)))
+    {
+        return;
+    }
+
+    this->endCombo(chan);
+    auto [message, alert] = DggMessageBuilder::makeVestaboardMessage(
+        &chan, *board, ctx.frame.backlog, *this->assets_);
+    this->addAlertingLine(chan, message, alert, ctx.frame.backlog);
+}
+
+void DggChatServer::onSiteEvent(const FrameContext &ctx)
+{
+    auto &chan = ctx.chan;
+    const auto &frame = ctx.frame;
+    const auto &name = frame.name;
+
+    // Subscriptions, gifts, donations and spotlights. The site also
+    // replays them as `PAIDEVENTS` / `SPOTLIGHTS` for its event bar,
+    // which are not handled here (they'd only repeat lines).
+    const auto event = parseDggEvent(name, ctx.obj, ctx.nowMs);
+    if (!event)
+    {
+        return;
+    }
+
+    const auto id =
+        event->uuid.isEmpty()
+            ? u"%1|%2|%3"_s.arg(QString::number(event->timestampMs),
+                                event->user.nick, event->text)
+            : event->uuid;
+    if (!chan.markSeen(u"EVENT|%1|%2"_s.arg(name, id)))
+    {
+        return;
+    }
+
+    this->endCombo(chan);
+
+    // A spotlight shows the message it quotes, so while that message is
+    // still in chat the spotlight takes its place (and its time) instead
+    // of the text being there twice. The line is found by its id, the
+    // hash the spotlight carries as `key`. Only a line by the same author
+    // counts, so a combo line, which has the id of the message it started
+    // with, is never replaced. When the message is gone (older than what
+    // chat holds, sent before we connected) the spotlight is a new line.
+    MessagePtr original;
+    auto shown = *event;
+    if (event->kind == DggEvent::Kind::Spotlight &&
+        !event->messageKey.isEmpty())
+    {
+        original = chan.findMessageByID(event->messageKey);
+        if (original && original->loginName != event->user.nick.toLower())
         {
-            // so that spotlighting the message again replaces this line
-            message->id = event->messageKey;
-        }
-        if (!frame.backlog)
-        {
-            // sound and window alert of the event's highlight, not for
-            // lines that are only being replayed
-            MessageBuilder::triggerHighlights(chan.get(), alert);
+            original.reset();
         }
         if (original)
         {
-            chan->replaceMessage(original, message);
-        }
-        else
-        {
-            chan->addMessage(message, MessageContext::Original);
+            shown.timestampMs = original->timestamp.toMSecsSinceEpoch();
         }
     }
-    else if (name == "PIN"_L1)
+
+    auto [message, alert] = DggMessageBuilder::makeEventMessage(
+        &chan, shown, frame.backlog, *this->assets_);
+    if (event->kind == DggEvent::Kind::Spotlight)
     {
-        const auto pin = parseDggPin(obj, nowMs);
-        const auto &current = chan->pinnedMessage();
-        if (pin.isRemoval())
+        // so that spotlighting the message again replaces this line
+        message->id = event->messageKey;
+    }
+    if (!frame.backlog)
+    {
+        // sound and window alert of the event's highlight, not for
+        // lines that are only being replayed
+        MessageBuilder::triggerHighlights(&chan, alert);
+    }
+    if (original)
+    {
+        chan.replaceMessage(original, message);
+    }
+    else
+    {
+        chan.addMessage(message, MessageContext::Original);
+    }
+}
+
+void DggChatServer::onPin(const FrameContext &ctx)
+{
+    auto &chan = ctx.chan;
+    const auto &frame = ctx.frame;
+
+    const auto pin = parseDggPin(ctx.obj, ctx.nowMs);
+    const auto &current = chan.pinnedMessage();
+    if (pin.isRemoval())
+    {
+        if (!current)
         {
-            if (!current)
-            {
-                return;
-            }
-            chan->setPinnedMessage(std::nullopt);
-            if (!frame.backlog)
-            {
-                this->endCombo(*chan);
-                chan->addMessage(
-                    DggMessageBuilder::makeSystemLine(
-                        chan.get(), QDateTime::currentDateTime(),
-                        pin.user.nick.isEmpty()
-                            ? u"The pinned message was removed."_s
-                            : u"%1 removed the pinned message."_s.arg(
-                                  pin.user.nick),
-                        false, false),
-                    MessageContext::Original);
-            }
             return;
         }
-
-        if (current && !pin.uuid.isEmpty() && current->uuid == pin.uuid)
+        chan.setPinnedMessage(std::nullopt);
+        if (!frame.backlog)
         {
-            // The same pin again
-            return;
-        }
-        chan->setPinnedMessage(pin);
-
-        // A line in the chat for a pin that was just made. The one the server
-        // sends after connecting (pinned an hour ago) only fills the banner.
-        constexpr qint64 FRESH_PIN_MS = 5 * 60 * 1000;
-        const auto age = nowMs - pin.timestampMs;
-        const auto key = u"PIN|%1"_s.arg(
-            pin.uuid.isEmpty() ? pin.text + QString::number(pin.timestampMs)
-                               : pin.uuid);
-        if (!frame.backlog && age < FRESH_PIN_MS && chan->markSeen(key))
-        {
-            this->endCombo(*chan);
-            chan->addMessage(
-                DggMessageBuilder::makePinMessage(
-                    chan.get(), pin, frame.backlog, *this->assets_),
+            this->endCombo(chan);
+            chan.addMessage(
+                DggMessageBuilder::makeSystemLine(
+                    &chan, QDateTime::currentDateTime(),
+                    pin.user.nick.isEmpty()
+                        ? u"The pinned message was removed."_s
+                        : u"%1 removed the pinned message."_s.arg(
+                              pin.user.nick),
+                    false, false),
                 MessageContext::Original);
         }
+        return;
     }
-    else if (name == "POLLSTART"_L1)
+
+    if (current && !pin.uuid.isEmpty() && current->uuid == pin.uuid)
     {
-        // The poll is only shown in the banner under the header (see
-        // DggPollBanner): it has no line in chat, neither at its start nor
-        // at its end. The server sends a running poll again after a
-        // reconnect; that just refreshes the numbers.
-        auto poll = parseDggPollStart(obj, nowMs);
+        // The same pin again
+        return;
+    }
+    chan.setPinnedMessage(pin);
+
+    // A line in the chat for a pin that was just made. The one the server
+    // sends after connecting (pinned an hour ago) only fills the banner.
+    constexpr qint64 FRESH_PIN_MS = 5 * 60 * 1000;
+    const auto age = ctx.nowMs - pin.timestampMs;
+    const auto key = u"PIN|%1"_s.arg(
+        pin.uuid.isEmpty() ? pin.text + QString::number(pin.timestampMs)
+                           : pin.uuid);
+    if (!frame.backlog && age < FRESH_PIN_MS && chan.markSeen(key))
+    {
+        this->endCombo(chan);
+        chan.addMessage(DggMessageBuilder::makePinMessage(
+                            &chan, pin, frame.backlog, *this->assets_),
+                        MessageContext::Original);
+    }
+}
+
+void DggChatServer::onPoll(const FrameContext &ctx)
+{
+    auto &chan = ctx.chan;
+    const auto &name = ctx.frame.name;
+
+    // The poll is only shown in the banner under the header (see
+    // DggPollBanner): it has no line in chat, neither at its start nor
+    // at its end.
+    if (name == "POLLSTART"_L1)
+    {
+        // The server sends a running poll again after a reconnect; that
+        // just refreshes the numbers.
+        auto poll = parseDggPollStart(ctx.obj, ctx.nowMs);
         if (!poll)
         {
             return;
         }
-        chan->startPoll(*poll);
+        chan.startPoll(*poll);
     }
     else if (name == "POLLSTOP"_L1)
     {
-        chan->endPoll(parseDggPollStop(obj));
+        chan.endPoll(parseDggPollStop(ctx.obj));
     }
     else if (name == "VOTECAST"_L1)
     {
-        const auto vote = parseDggPollVote(obj);
-        chan->addPollVotes(vote.option, vote.quantity);
+        const auto vote = parseDggPollVote(ctx.obj);
+        chan.addPollVotes(vote.option, vote.quantity);
     }
     else if (name == "VOTECOUNTED"_L1)
     {
-        chan->markPollVote(parseDggPollVote(obj).option);
+        chan.markPollVote(parseDggPollVote(ctx.obj).option);
     }
-    else if (name == "NAMES"_L1)
-    {
-        // The full list of who is connected (~1500 users): it replaces what
-        // the viewer list knew.
-        std::vector<DggUser> users;
-        for (const auto &entry : obj.value("users"_L1).toArray())
-        {
-            users.push_back(DggUser::fromJson(entry.toObject()));
-        }
-        chan->setOnlineUsers(users);
-        this->endCombo(*chan);
-        chan->addSystemMessage(u"Serving %1 connections and %2 users."_s
-                                   .arg(obj.value("connectioncount"_L1).toInt())
-                                   .arg(obj.value("usercount"_L1).toInt()));
-    }
-    else if (name == "ME"_L1)
-    {
-        this->onMe(*chan, obj);
-    }
-    else if (name == "PRIVMSG"_L1)
-    {
-        // A whisper to the user. It is private: it only shows in this split
-        // and isn't logged (see DggMessageBuilder::makeChatMessage).
-        auto msg = parseDggWhisper(obj, nowMs);
-        if (!msg || !chan->markSeen(msg->hash))
-        {
-            return;
-        }
-        chan->noteUser(msg->user);
-        this->endCombo(*chan);
-        HighlightAlert alert;
-        const MessagePtr line = DggMessageBuilder::makeChatMessage(
-            chan.get(), *msg, frame.backlog, *this->assets_, &alert);
-        MessageBuilder::triggerHighlights(chan.get(), alert);
-        chan->addMessage(line, MessageContext::Original);
-    }
-    else if (name == "PRIVMSGSENT"_L1)
-    {
-        // Has no payload; sendWhisper() already showed the line
-    }
-    else if (name == "ERR"_L1)
-    {
-        this->endCombo(*chan);
+}
 
-        // After these two the connection is not retried by itself, so the
-        // line ends in a link that reconnects (like Twitch's ban message)
-        const auto description = obj.value("description"_L1).toString();
-        if (description == "banned"_L1)
-        {
-            chan->addMessage(
-                DggMessageBuilder::makeReconnectLine(
-                    chan.get(), QDateTime::currentDateTime(), dggErrorText(obj),
-                    u"If you believe you have been unbanned, try "
-                    u"reconnecting."_s),
-                MessageContext::Original);
-        }
-        else if (description == "toomanyconnections"_L1)
-        {
-            chan->addMessage(DggMessageBuilder::makeReconnectLine(
-                                 chan.get(), QDateTime::currentDateTime(),
-                                 dggErrorText(obj), u"Try reconnecting."_s),
-                             MessageContext::Original);
-        }
-        else
-        {
-            chan->addSystemMessage(dggErrorText(obj));
-        }
-    }
-    else if (name == "REFRESHCHATASSETS"_L1)
+void DggChatServer::onNames(const FrameContext &ctx)
+{
+    auto &chan = ctx.chan;
+    const auto &obj = ctx.obj;
+
+    // The full list of who is connected (~1500 users): it replaces what
+    // the viewer list knew.
+    std::vector<DggUser> users;
+    for (const auto &entry : obj.value("users"_L1).toArray())
     {
-        // New emotes or flairs were published. Lines already shown keep the
-        // old images.
-        this->assets_->load();
+        users.push_back(DggUser::fromJson(entry.toObject()));
     }
-    else if (name == "UPDATEUSER"_L1)
+    chan.setOnlineUsers(users);
+    this->endCombo(chan);
+    chan.addSystemMessage(u"Serving %1 connections and %2 users."_s
+                              .arg(obj.value("connectioncount"_L1).toInt())
+                              .arg(obj.value("usercount"_L1).toInt()));
+}
+
+void DggChatServer::onWhisper(const FrameContext &ctx)
+{
+    auto &chan = ctx.chan;
+
+    // A whisper to the user. It is private: it only shows in this split
+    // and isn't logged (see DggMessageBuilder::makeChatMessage).
+    auto msg = parseDggWhisper(ctx.obj, ctx.nowMs);
+    if (!msg || !chan.markSeen(msg->hash))
     {
-        // new flairs and the like: the viewer list moves the user
-        chan->userUpdated(DggUser::fromJson(obj));
+        return;
     }
-    else if (name == "JOIN"_L1 || name == "QUIT"_L1 || name == "USERSDELTA"_L1)
+    chan.noteUser(msg->user);
+    this->endCombo(chan);
+    HighlightAlert alert;
+    const MessagePtr line = DggMessageBuilder::makeChatMessage(
+        &chan, *msg, ctx.frame.backlog, *this->assets_, &alert);
+    MessageBuilder::triggerHighlights(&chan, alert);
+    chan.addMessage(line, MessageContext::Original);
+}
+
+void DggChatServer::onError(const FrameContext &ctx)
+{
+    auto &chan = ctx.chan;
+    const auto &obj = ctx.obj;
+
+    this->endCombo(chan);
+
+    // After these two the connection is not retried by itself, so the
+    // line ends in a link that reconnects (like Twitch's ban message)
+    const auto description = obj.value("description"_L1).toString();
+    if (description == "banned"_L1)
     {
-        // With ~1,500 users these would flood the split, so they aren't shown
-        // as lines. They keep the viewer list current, and their names are
-        // remembered so they can be clicked in messages.
-        if (name == "JOIN"_L1)
-        {
-            chan->userJoined(DggUser::fromJson(obj));
-        }
-        else if (name == "QUIT"_L1)
-        {
-            chan->userQuit(DggUser::fromJson(obj));
-        }
-        else
-        {
-            // `users` joined, `removed` left. chat-gui finds the removed by
-            // their id, so the entries are user objects; a bare nick is
-            // accepted too.
-            std::vector<DggUser> joined;
-            for (const auto &entry : obj.value("users"_L1).toArray())
-            {
-                joined.push_back(DggUser::fromJson(entry.toObject()));
-            }
-            std::vector<DggUser> quit;
-            for (const auto &entry : obj.value("removed"_L1).toArray())
-            {
-                if (entry.isString())
-                {
-                    DggUser user;
-                    user.nick = entry.toString();
-                    quit.push_back(std::move(user));
-                }
-                else
-                {
-                    quit.push_back(DggUser::fromJson(entry.toObject()));
-                }
-            }
-            chan->updateOnlineUsers(joined, quit);
-        }
+        chan.addMessage(
+            DggMessageBuilder::makeReconnectLine(
+                &chan, QDateTime::currentDateTime(), dggErrorText(obj),
+                u"If you believe you have been unbanned, try "
+                u"reconnecting."_s),
+            MessageContext::Original);
+    }
+    else if (description == "toomanyconnections"_L1)
+    {
+        chan.addMessage(DggMessageBuilder::makeReconnectLine(
+                            &chan, QDateTime::currentDateTime(),
+                            dggErrorText(obj), u"Try reconnecting."_s),
+                        MessageContext::Original);
     }
     else
     {
-        qCDebug(chatterinoDgg) << "Unhandled event" << name;
+        chan.addSystemMessage(dggErrorText(obj));
+    }
+}
+
+void DggChatServer::onRefreshAssets(const FrameContext & /*ctx*/)
+{
+    // New emotes or flairs were published. Lines already shown keep the
+    // old images.
+    this->assets_->load();
+}
+
+void DggChatServer::onUserUpdated(const FrameContext &ctx)
+{
+    // new flairs and the like: the viewer list moves the user
+    ctx.chan.userUpdated(DggUser::fromJson(ctx.obj));
+}
+
+void DggChatServer::onUserPresence(const FrameContext &ctx)
+{
+    auto &chan = ctx.chan;
+    const auto &obj = ctx.obj;
+    const auto &name = ctx.frame.name;
+
+    // With ~1,500 users these would flood the split, so they aren't shown
+    // as lines. They keep the viewer list current, and their names are
+    // remembered so they can be clicked in messages.
+    if (name == "JOIN"_L1)
+    {
+        chan.userJoined(DggUser::fromJson(obj));
+    }
+    else if (name == "QUIT"_L1)
+    {
+        chan.userQuit(DggUser::fromJson(obj));
+    }
+    else
+    {
+        // `users` joined, `removed` left. chat-gui finds the removed by
+        // their id, so the entries are user objects; a bare nick is
+        // accepted too.
+        std::vector<DggUser> joined;
+        for (const auto &entry : obj.value("users"_L1).toArray())
+        {
+            joined.push_back(DggUser::fromJson(entry.toObject()));
+        }
+        std::vector<DggUser> quit;
+        for (const auto &entry : obj.value("removed"_L1).toArray())
+        {
+            if (entry.isString())
+            {
+                DggUser user;
+                user.nick = entry.toString();
+                quit.push_back(std::move(user));
+            }
+            else
+            {
+                quit.push_back(DggUser::fromJson(entry.toObject()));
+            }
+        }
+        chan.updateOnlineUsers(joined, quit);
     }
 }
 

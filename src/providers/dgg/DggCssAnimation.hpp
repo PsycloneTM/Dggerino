@@ -431,7 +431,8 @@ struct BakedLayerFrame {
 
 struct BakedLayers {
     std::vector<BakedLayerFrame> frames;
-    /// What every layer looks like once all the animations are over.
+    /// What every layer looks like once all the animations are over (also
+    /// when `truncated`: the baked part is cut off, `rest` is not).
     std::vector<Computed> rest;
     bool truncated = false;
 };

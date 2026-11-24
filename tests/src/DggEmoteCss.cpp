@@ -1253,6 +1253,61 @@ TEST(DggCssAnimation, HugeIterationCountIsNotAPlayCount)
     EXPECT_TRUE(baked->truncated);
 }
 
+TEST(DggCssAnimation, NegativeDelayEndsTheBakeEarlier)
+{
+    using namespace dggcss::anim;
+    const auto specs = parseAnimationList("pulse 2s -1s forwards");
+    ASSERT_TRUE(specs.has_value());
+
+    std::string problem;
+    const std::vector<Keyframe> keyframes{
+        {0, {{"opacity", "0"}}},
+        {1, {{"opacity", "1"}}},
+    };
+    const auto animation = Animation::build((*specs)[0], keyframes, problem);
+    ASSERT_TRUE(animation.has_value()) << problem;
+
+    const auto baked =
+        bake({*animation}, Computed{}, Box{32, 32}, BakeOptions{}, problem);
+    ASSERT_TRUE(baked.has_value()) << problem;
+    EXPECT_FALSE(baked->truncated);
+
+    int total = 0;
+    for (const auto &frame : baked->frames)
+    {
+        total += frame.durationMs;
+    }
+    // 2 s long, started 1 s in: one second is left
+    EXPECT_EQ(total, 1000);
+}
+
+TEST(DggCssAnimation, TruncatedLayersRestWhereTheAnimationsEnd)
+{
+    using namespace dggcss::anim;
+    const auto specs = parseAnimationList("pulse 20s forwards");
+    ASSERT_TRUE(specs.has_value());
+
+    std::string problem;
+    const std::vector<Keyframe> keyframes{
+        {0, {{"opacity", "0"}}},
+        {1, {{"opacity", "1"}}},
+    };
+    const auto animation = Animation::build((*specs)[0], keyframes, problem);
+    ASSERT_TRUE(animation.has_value()) << problem;
+
+    const std::vector<LayerInput> layers{LayerInput{{*animation}, Computed{}}};
+    const auto baked = bakeLayers(layers, Box{32, 32}, BakeOptions{}, problem);
+    ASSERT_TRUE(baked.has_value()) << problem;
+    EXPECT_TRUE(baked->truncated);
+    ASSERT_EQ(baked->rest.size(), 1U);
+
+    // cut off at 10 s, but at rest the animation is over (20 s)
+    const Box box{32, 32};
+    EXPECT_EQ(baked->rest[0], computeAt({*animation}, Computed{}, 20000, box));
+    EXPECT_FALSE(baked->rest[0] ==
+                 computeAt({*animation}, Computed{}, 10000, box));
+}
+
 TEST(DggEmoteCss, ABrokenStringDoesNotSwallowTheRestOfTheStylesheet)
 {
     const DggEmoteCss sheet = DggEmoteCss::parse(

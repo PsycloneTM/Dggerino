@@ -230,6 +230,7 @@ set(SOURCE_FILES
         controllers/highlights/types/Common.cpp
         controllers/highlights/types/Common.hpp
         controllers/highlights/types/Concepts.hpp
+        controllers/highlights/types/DggEventHighlight.hpp
         controllers/highlights/types/FilterHighlight.cpp
         controllers/highlights/types/FilterHighlight.hpp
         controllers/highlights/types/FirstMessageHighlight.cpp
@@ -246,20 +247,6 @@ set(SOURCE_FILES
         controllers/highlights/types/SubscribedThreadHighlight.hpp
         controllers/highlights/types/SubscriptionsHighlight.cpp
         controllers/highlights/types/SubscriptionsHighlight.hpp
-        controllers/highlights/types/DggSubscriptionHighlight.cpp
-        controllers/highlights/types/DggSubscriptionHighlight.hpp
-        controllers/highlights/types/DggGiftHighlight.cpp
-        controllers/highlights/types/DggGiftHighlight.hpp
-        controllers/highlights/types/DggDonationHighlight.cpp
-        controllers/highlights/types/DggDonationHighlight.hpp
-        controllers/highlights/types/DggSpotlightHighlight.cpp
-        controllers/highlights/types/DggSpotlightHighlight.hpp
-        controllers/highlights/types/DggBroadcastHighlight.cpp
-        controllers/highlights/types/DggBroadcastHighlight.hpp
-        controllers/highlights/types/DggXPostHighlight.cpp
-        controllers/highlights/types/DggXPostHighlight.hpp
-        controllers/highlights/types/DggVestaboardHighlight.cpp
-        controllers/highlights/types/DggVestaboardHighlight.hpp
         controllers/highlights/types/UncategorizedNotificationHighlight.cpp
         controllers/highlights/types/UncategorizedNotificationHighlight.hpp
         controllers/highlights/types/UserHighlight.cpp

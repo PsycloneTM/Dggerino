@@ -2576,12 +2576,14 @@ std::optional<Baked> bake(const std::vector<Animation> &animations,
         for (const auto &animation : animations)
         {
             const auto &s = animation.spec();
-            if (s.durationMs <= 0)
+            if (s.durationMs <= 0 || s.iterations <= 0)
             {
                 continue;
             }
-            finishedAt = std::max(finishedAt, std::max(0.0, s.delayMs) +
-                                                  s.durationMs * s.iterations);
+            // a negative delay starts the animation part way through, so it
+            // ends earlier (bakeLayers() counts it the same way)
+            finishedAt =
+                std::max(finishedAt, s.delayMs + s.durationMs * s.iterations);
         }
         total = finishedAt;
         if (total > options.maxMs)
@@ -2644,7 +2646,7 @@ std::optional<BakedLayers> bakeLayers(const std::vector<LayerInput> &layers,
         return std::nullopt;
     }
 
-    double total = 0;
+    double finishedAt = 0;  // when the last animation ends
     bool any = false;
     for (const auto &layer : layers)
     {
@@ -2662,17 +2664,18 @@ std::optional<BakedLayers> bakeLayers(const std::vector<LayerInput> &layers,
             }
             any = true;
             // a negative delay starts the animation part way through
-            total = std::max(total,
-                             spec.delayMs + spec.durationMs * spec.iterations);
+            finishedAt = std::max(
+                finishedAt, spec.delayMs + spec.durationMs * spec.iterations);
         }
     }
-    if (!any || total <= 0)
+    if (!any || finishedAt <= 0)
     {
         problem = "no duration";
         return std::nullopt;
     }
 
     BakedLayers out;
+    double total = finishedAt;  // how much time is baked
     if (total > options.maxMs)
     {
         total = options.maxMs;
@@ -2708,7 +2711,10 @@ std::optional<BakedLayers> bakeLayers(const std::vector<LayerInput> &layers,
 
     for (const auto &layer : layers)
     {
-        out.rest.push_back(computeAt(layer.animations, layer.base, total, box));
+        // Where the animations really end, also when the baking was cut off
+        // (the same as bake() does)
+        out.rest.push_back(
+            computeAt(layer.animations, layer.base, finishedAt, box));
     }
 
     if (out.frames.size() == 1 && out.frames.front().layers == out.rest)

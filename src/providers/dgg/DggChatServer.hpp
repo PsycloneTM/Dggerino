@@ -43,10 +43,8 @@ void dggLoadSiteImages(std::function<void()> done = {});
 
 /// Asks the site for the profile of `nick`. `done` gets the profile, or
 /// nullopt and the HTTP status (0 if there was none) when the site refused or
-/// had nothing. When a DGG account is logged in the login key is sent as the
-/// `authtoken` cookie; if the site refuses it (401/403) the request is made
-/// again anonymously, and only that second answer is reported. GUI thread
-/// only.
+/// had nothing. The request is anonymous: the login key only goes to the chat
+/// socket. GUI thread only.
 void dggFetchUserInfo(
     const QString &nick,
     std::function<void(const std::optional<DggProfile> &, int status)> done);
@@ -125,8 +123,6 @@ private:
 
     void onSocketOpened();
     void onSocketClosed(std::chrono::milliseconds retryIn);
-    /// `ME`: tells who the server thinks we are (a guest has no user).
-    void onMe(DggChannel &chan, const QJsonObject &payload);
     /// The active destiny.gg account changed (login, logout, switch):
     /// reconnects so the connection is made as the new user.
     void onAccountChanged();
@@ -137,7 +133,59 @@ private:
     /// emote and flair manifests and the site images are loaded, so the
     /// backlog isn't built without emotes or the icon of a death line.
     void onFrame(const DggFrame &frame);
+
+    /// What a handler below needs to know about the frame it handles.
+    struct FrameContext
+    {
+        DggChannel &chan;
+        const DggFrame &frame;
+        /// `frame.payload` as an object (empty if it is not one).
+        const QJsonObject &obj;
+        /// When the frame was handled, ms since the epoch.
+        qint64 nowMs;
+    };
+
+    /// Calls the handler of the frame's event, if the chat exists. Held-back
+    /// frames (see `onFrame`) come through here too.
     void handleFrame(const DggFrame &frame);
+
+    // One handler per event, called by `handleFrame`. Each one does the
+    // work of one `if` branch of what used to be a single function.
+
+    /// `MSG`: a line of chat (or the combo it continues).
+    void onChatMessage(const FrameContext &ctx);
+    /// `MUTE`, `UNMUTE`, `BAN`, `UNBAN` and `SUBONLY`.
+    void onModeration(const FrameContext &ctx);
+    /// `DEATH`.
+    void onDeath(const FrameContext &ctx);
+    /// `BROADCAST`.
+    void onBroadcast(const FrameContext &ctx);
+    /// `XPOST`.
+    void onXPost(const FrameContext &ctx);
+    /// `VESTABOARD_*` (see `isDggVestaboardName`).
+    void onVestaboard(const FrameContext &ctx);
+    /// Subscriptions, gifts, donations and spotlights (see
+    /// `isDggEventName`).
+    void onSiteEvent(const FrameContext &ctx);
+    /// `PIN`: a pinned message, or its removal.
+    void onPin(const FrameContext &ctx);
+    /// `POLLSTART`, `POLLSTOP`, `VOTECAST` and `VOTECOUNTED`.
+    void onPoll(const FrameContext &ctx);
+    /// `NAMES`: everyone who is connected.
+    void onNames(const FrameContext &ctx);
+    /// `ME`: tells who the server thinks we are (a guest has no user).
+    void onMe(const FrameContext &ctx);
+    /// `PRIVMSG`: a whisper to the user.
+    void onWhisper(const FrameContext &ctx);
+    /// `ERR`.
+    void onError(const FrameContext &ctx);
+    /// `REFRESHCHATASSETS`.
+    void onRefreshAssets(const FrameContext &ctx);
+    /// `UPDATEUSER`.
+    void onUserUpdated(const FrameContext &ctx);
+    /// `JOIN`, `QUIT` and `USERSDELTA`.
+    void onUserPresence(const FrameContext &ctx);
+
     /// Handles the held frames once the emote and flair manifests and the
     /// site images are both known.
     void flushPendingFrames();
