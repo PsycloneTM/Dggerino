@@ -2250,12 +2250,26 @@ std::optional<Animation> Animation::build(
 
     for (const auto *frame : sorted)
     {
+        // Blocks at the same offset merge (CSS cascade): the last *valid*
+        // animation-timing-function among them applies to every property
+        // keyframed at that offset, whichever block declared it. An invalid
+        // value is dropped and does not reset an earlier one.
         std::optional<TimingFunction> timing;
-        for (const auto &decl : frame->decls)
+        for (const auto *other : sorted)
         {
-            if (lower(decl.name) == "animation-timing-function")
+            if (other->offset != frame->offset)
             {
-                timing = parseTimingFunction(decl.value);
+                continue;
+            }
+            for (const auto &decl : other->decls)
+            {
+                if (lower(trim(decl.name)) == "animation-timing-function")
+                {
+                    if (auto parsed = parseTimingFunction(decl.value))
+                    {
+                        timing = *parsed;
+                    }
+                }
             }
         }
 

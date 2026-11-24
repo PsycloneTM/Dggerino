@@ -481,6 +481,7 @@ set(SOURCE_FILES
         providers/dgg/DggCssAnimation.hpp
         providers/dgg/DggEmoteCss.cpp
         providers/dgg/DggEmoteCss.hpp
+        providers/dgg/DggFlairs.hpp
         providers/dgg/DggFrame.cpp
         providers/dgg/DggFrame.hpp
         providers/dgg/DggManifest.cpp

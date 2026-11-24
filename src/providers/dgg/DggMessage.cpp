@@ -9,12 +9,23 @@
 #include <QUrlQuery>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <vector>
 
 namespace chatterino {
 
 using namespace Qt::Literals;
+
+qint64 dggClampedInt64(double value, qint64 limit)
+{
+    if (std::isnan(value))
+    {
+        return 0;
+    }
+    const auto bound = static_cast<double>(limit);
+    return static_cast<qint64>(std::clamp(value, -bound, bound));
+}
 
 namespace {
 
@@ -30,7 +41,7 @@ QStringList toStringList(const QJsonValue &value)
 
 qint64 toInt64(const QJsonValue &value)
 {
-    return static_cast<qint64>(value.toDouble());
+    return dggClampedInt64(value.toDouble());
 }
 
 /// A number that the server may have sent as a string.
@@ -38,7 +49,7 @@ qint64 toLooseInt64(const QJsonValue &value, qint64 fallback)
 {
     if (value.isDouble())
     {
-        return static_cast<qint64>(value.toDouble());
+        return dggClampedInt64(value.toDouble());
     }
     if (value.isString())
     {
@@ -58,7 +69,7 @@ qint64 toDateMs(const QJsonValue &value, qint64 fallback)
 {
     if (value.isDouble())
     {
-        return static_cast<qint64>(value.toDouble());
+        return dggClampedInt64(value.toDouble());
     }
     if (value.isString())
     {

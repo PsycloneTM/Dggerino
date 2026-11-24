@@ -11,6 +11,7 @@
 #include "messages/SpriteSheet.hpp"
 #include "providers/dgg/DggAccount.hpp"
 #include "providers/dgg/DggAccountManager.hpp"
+#include "providers/dgg/DggFlairs.hpp"
 #include "providers/dgg/DggAssets.hpp"
 #include "providers/dgg/DggChannel.hpp"
 #include "providers/dgg/DggCombo.hpp"
@@ -382,26 +383,6 @@ TextElements collectElements(const QStringList &words, const DggUser &user,
 
 QString displayedNick(const QString &nick);
 
-/// The flair that is the tier badge (and colour) of a subscription tier.
-QString tierFlairName(int tier)
-{
-    switch (tier)
-    {
-        case 1:
-            return QStringLiteral("flair13");
-        case 2:
-            return QStringLiteral("flair1");
-        case 3:
-            return QStringLiteral("flair3");
-        case 4:
-            return QStringLiteral("flair8");
-        case 5:
-            return QStringLiteral("flair42");
-        default:
-            return {};
-    }
-}
-
 /// Where the elements of an event's header sit. With a message that came with
 /// the event the header is its own line above that message, and it is only
 /// shown while "Show subscription header" is on, like the header of Twitch's
@@ -495,7 +476,7 @@ QString appendEventTier(DggMessageBuilder &builder, const DggEvent &event,
                         const DggAssets &assets, EventHeader header)
 {
     DggUser tierUser;
-    if (const auto flair = tierFlairName(event.tier); !flair.isEmpty())
+    if (const auto flair = dggTierFlairName(event.tier); !flair.isEmpty())
     {
         tierUser.features = QStringList{flair};
     }

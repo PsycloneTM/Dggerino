@@ -71,6 +71,9 @@ bool isAuthRefusal(const NetworkResult &result)
 /// chat-gui's message limit, counted in code points
 constexpr qsizetype MAX_MESSAGE_LENGTH = 512;
 
+/// Cap on frames held back while the assets load (see `onFrame`)
+constexpr size_t MAX_PENDING_FRAMES = 5000;
+
 /// Tells the user in `chan` what the site's error `code` means (the same texts
 /// the server's `ERR` events get).
 void sayDggError(DggChannel &chan, const char *code)
@@ -319,13 +322,15 @@ std::shared_ptr<Channel> DggChatServer::getOrCreate()
         this->channel_ = chan;
         this->combo_.reset();
 
-        this->signalHolder_.managedConnect(chan->aboutToClose, [this] {
-            if (this->socket_)
-            {
-                this->socket_->stop();
-            }
-            this->stopStreamPolling();
-        });
+        // Assigning drops the connection to the previous channel's signal
+        this->channelClosedConnection_ = pajlada::Signals::ScopedConnection(
+            chan->aboutToClose.connect([this] {
+                if (this->socket_)
+                {
+                    this->socket_->stop();
+                }
+                this->stopStreamPolling();
+            }));
 
         this->startStreamPolling();
     }
@@ -877,7 +882,13 @@ void DggChatServer::onFrame(const DggFrame &frame)
 {
     if (!this->assets_->isReady() || !this->siteImagesReady_)
     {
-        this->pendingFrames_.push_back(frame);
+        // Safety net: the load times out, so this stays small in practice.
+        // Past the cap the newest frames are dropped, which keeps the
+        // setup frames (ME, NAMES, backlog) that arrived first.
+        if (this->pendingFrames_.size() < MAX_PENDING_FRAMES)
+        {
+            this->pendingFrames_.push_back(frame);
+        }
         return;
     }
     this->handleFrame(frame);

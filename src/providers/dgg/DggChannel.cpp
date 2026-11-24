@@ -76,7 +76,7 @@ bool DggChannel::canSendMessage() const
 
 bool DggChannel::isWritable() const
 {
-    return getApp()->getAccounts()->dgg.isLoggedIn();
+    return this->canSendMessage();
 }
 
 void DggChannel::sendMessage(const QString &message)

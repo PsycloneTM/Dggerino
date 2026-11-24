@@ -6,6 +6,7 @@
 #include "debug/AssertInGuiThread.hpp"
 #include "messages/Image.hpp"
 #include "messages/ImageSet.hpp"
+#include "providers/dgg/DggFlairs.hpp"
 #include "providers/dgg/DggMessage.hpp"
 
 #include <QDateTime>
@@ -43,16 +44,8 @@ std::vector<QString> cdnUrls(const QString &path)
 /// Moves an image URL of the old host to the new one. The old host keeps its
 /// files in a versioned directory (`/4.68.0/emotes/x.gif`), the new one
 /// doesn't (`/emotes/x.gif`). URLs that already point elsewhere stay as is.
-/// Flip `REWRITE_IMAGE_HOSTS` to false to use the URLs of the manifests as
-/// they are.
-constexpr bool REWRITE_IMAGE_HOSTS = true;
-
 QString toNewCdn(const QString &url)
 {
-    if (!REWRITE_IMAGE_HOSTS)
-    {
-        return url;
-    }
     QUrl parsed(url);
     if (parsed.host() != u"cdn.destiny.gg")
     {
@@ -634,14 +627,16 @@ DggEmoteContext DggAssets::emoteContextFor(const DggUser &user, bool isAction,
 std::vector<EmotePtr> DggAssets::badgesFor(const DggUser &user) const
 {
     // The subscription badges are not shown: the generic `subscriber` one and
-    // the tier ones (Tier 1 `flair13`, Tier 2 `flair1`, Tier 3 `flair3`,
-    // Tier 4 `flair8`, Tier 5 `flair42`). The nick colour (and the Tier 5
+    // the tier ones (`dggTierFlairName()` for tiers 1 to 5). The nick colour (and the Tier 5
     // rainbow) comes from the flairs, not from this list, and is unchanged.
-    static const std::set<QString> hiddenBadges{
-        QStringLiteral("subscriber"), QStringLiteral("flair13"),
-        QStringLiteral("flair1"),     QStringLiteral("flair3"),
-        QStringLiteral("flair8"),     QStringLiteral("flair42"),
-    };
+    static const std::set<QString> hiddenBadges = [] {
+        std::set<QString> ids{QStringLiteral("subscriber")};
+        for (int tier = 1; tier <= 5; tier++)
+        {
+            ids.insert(dggTierFlairName(tier));
+        }
+        return ids;
+    }();
 
     std::vector<std::pair<int, EmotePtr>> found;
     for (const auto &feature : user.features)

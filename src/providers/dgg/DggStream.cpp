@@ -99,8 +99,8 @@ std::optional<DggStreamInfo> parseDggStreamInfo(const QJsonObject &root)
 
         out.isLive = true;
         out.platforms.push_back(it.key());
-        out.viewers += static_cast<uint64_t>(
-            std::max(0.0, stream.value("viewers"_L1).toDouble()));
+        out.viewers += static_cast<uint64_t>(std::max<qint64>(
+            0, dggClampedInt64(stream.value("viewers"_L1).toDouble())));
 
         if (out.title.isEmpty())
         {

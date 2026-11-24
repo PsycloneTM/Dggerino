@@ -111,8 +111,11 @@ std::optional<std::vector<DggMention>> parseDggMentions(const QJsonObject &root)
         DggMention mention;
         mention.nick = obj.value("nick"_L1).toString();
         mention.text = obj.value("text"_L1).toString();
+        // seconds; the limit keeps `* 1000` inside qint64
         mention.timestampMs =
-            static_cast<qint64>(obj.value("date"_L1).toDouble()) * 1000;
+            dggClampedInt64(obj.value("date"_L1).toDouble(),
+                            9'000'000'000'000) *
+            1000;
         if (mention.nick.isEmpty() || mention.text.isEmpty())
         {
             continue;

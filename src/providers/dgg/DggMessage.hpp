@@ -218,6 +218,12 @@ std::optional<DggEvent> parseDggEvent(QStringView name, const QJsonObject &obj,
 /// spotlighted one). A user id of 0 (unknown) counts as empty.
 QString dggMessageHash(qint64 timestampMs, qint64 userId, const QString &text);
 
+/// A JSON number as an integer. Converting a double that is out of range (or
+/// NaN) to an integer is undefined behaviour, so the value is clamped to
+/// +-`limit` first (9e15 is below 2^53, the largest range a double holds
+/// exactly) and NaN is 0.
+qint64 dggClampedInt64(double value, qint64 limit = 9'000'000'000'000'000);
+
 /// An `XPOST` event: a post on X that was shared in chat.
 struct DggXPost {
     /// The X handle, without the `@`

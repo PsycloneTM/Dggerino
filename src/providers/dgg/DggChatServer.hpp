@@ -206,6 +206,8 @@ private:
     std::unique_ptr<QTimer> streamTimer_;
     std::unique_ptr<DggWebSocket> socket_;
     pajlada::Signals::SignalHolder signalHolder_;
+    /// The current channel's `aboutToClose`; replaced with each new channel.
+    pajlada::Signals::ScopedConnection channelClosedConnection_;
 };
 
 }  // namespace chatterino
