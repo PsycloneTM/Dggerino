@@ -1318,14 +1318,22 @@ std::pair<MessagePtrMut, HighlightAlert>
         builder->loginName = user.nick.toLower();
         builder->displayName = user.nick;
 
-        // The sender in their flair colour, a click opens the user card
+        // The sender in their flair colour, a click opens the user card. A
+        // MentionElement, like the names in the other event lines, so it is
+        // bold with "Bold @usernames" (its link comes from the login name).
         const auto style = assets.nickStyleFor(user);
         prefix = displayedNick(user.nick) + QChar(u':');
-        emplaceHeaderText(
-            builder, prefix, MessageElementFlag::Username,
+        MessageElementFlags senderFlags{MessageElementFlag::Text,
+                                        MessageElementFlag::Mention,
+                                        MessageElementFlag::Username};
+        if (style.rainbow)
+        {
+            senderFlags.set(MessageElementFlag::DggRainbowUsername);
+        }
+        builder.emplace<MentionElement>(
+            prefix, user.nick, MessageColor::System,
             style.color ? MessageColor(*style.color) : MessageColor::System,
-            style.rainbow, EventHeader{.hasContent = false})
-            ->setLink(Link(Link::UserInfo, user.nick));
+            senderFlags);
     }
 
     const QString shown =
