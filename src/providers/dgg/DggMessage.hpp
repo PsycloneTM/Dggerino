@@ -244,6 +244,10 @@ std::optional<DggXPost> parseDggXPost(const QJsonObject &obj, qint64 nowMs);
 /// `VESTABOARD_LEAD`, `VESTABOARD_HOURLY` and `VESTABOARD_RESET`: the
 /// announcements of the Vestaboard auction. They carry the board of the
 /// leading design (a matrix of tile codes).
+/// The real board is 6 x 22; the parser keeps twice that at most.
+constexpr size_t DGG_VESTABOARD_MAX_ROWS = 12;
+constexpr size_t DGG_VESTABOARD_MAX_COLUMNS = 44;
+
 struct DggVestaboard {
     enum class Kind {
         /// A design took the lead (a new one, or a contribution lifted an
@@ -268,7 +272,8 @@ struct DggVestaboard {
     qint64 totalCents = 0;
     bool isNewDesign = false;
     /// Rows of tile codes (0 blank, 1-26 A-Z, 27-36 digits, 37-60
-    /// punctuation, 63-71 colours)
+    /// punctuation, 63-71 colours). At most DGG_VESTABOARD_MAX_ROWS rows of
+    /// DGG_VESTABOARD_MAX_COLUMNS tiles: the board is drawn as big as this.
     std::vector<std::vector<int>> characters;
     std::vector<Contributor> contributors;
     QString uuid;

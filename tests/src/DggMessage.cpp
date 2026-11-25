@@ -672,3 +672,50 @@ TEST(DggMessage, ParsesAVote)
     EXPECT_EQ(negative.option, 0);
     EXPECT_EQ(negative.quantity, 0);
 }
+
+TEST(DggMessage, AVestaboardIsKeptToTheSizeOfTheBoard)
+{
+    // 100 rows of 1000 tiles would make a picture of hundreds of MB
+    QString rows;
+    for (int r = 0; r < 100; r++)
+    {
+        if (r > 0)
+        {
+            rows += u',';
+        }
+        rows += u'[';
+        for (int c = 0; c < 1000; c++)
+        {
+            rows += (c > 0 ? u",1" : u"1");
+        }
+        rows += u']';
+    }
+    const QString json =
+        uR"({"submitter":"Bob","total":500,"isNewDesign":true,"characters":[)"_s +
+        rows + u"]}"_s;
+    const auto board = parseDggVestaboard(
+        u"VESTABOARD_LEAD", QJsonDocument::fromJson(json.toUtf8()).object(),
+        NOW);
+
+    ASSERT_TRUE(board);
+    ASSERT_EQ(board->characters.size(), DGG_VESTABOARD_MAX_ROWS);
+    for (const auto &row : board->characters)
+    {
+        EXPECT_EQ(row.size(), DGG_VESTABOARD_MAX_COLUMNS);
+    }
+}
+
+TEST(DggMessage, AVestaboardTileCodeStaysSmall)
+{
+    const auto board = parseDggVestaboard(
+        u"VESTABOARD_LEAD",
+        obj(R"({"submitter":"Bob","characters":[[1,99999999999,-99999999999]]})"),
+        NOW);
+
+    ASSERT_TRUE(board);
+    ASSERT_EQ(board->characters.size(), 1U);
+    ASSERT_EQ(board->characters[0].size(), 3U);
+    EXPECT_EQ(board->characters[0][0], 1);
+    EXPECT_EQ(board->characters[0][1], 1000);
+    EXPECT_EQ(board->characters[0][2], -1000);
+}

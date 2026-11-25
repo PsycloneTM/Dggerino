@@ -1328,7 +1328,9 @@ bool nthMatches(int a, int b, int position)
     {
         return position == b;
     }
-    const int diff = position - b;
+    // 64 bit: `b` comes from the stylesheet and `position - b` can leave
+    // the range of an int
+    const long long diff = static_cast<long long>(position) - b;
     return diff % a == 0 && diff / a >= 0;
 }
 
@@ -1697,10 +1699,18 @@ bool matchChain(const std::vector<SelectorPart> &parts, size_t index,
 // Values
 // ---------------------------------------------------------------------------
 
-/// Replaces `var(--x, fallback)`. Returns nullopt if a variable is neither
-/// defined nor has a fallback.
-std::optional<string> resolveVars(string_view value, const Props &props,
-                                  int depth = 0)
+/// A stylesheet can make `var()` expand exponentially (a variable that names
+/// the next one 20 times, 8 levels deep is 20^8 expansions), so the work is
+/// bounded: past either limit the value counts as unresolvable.
+struct VarBudget {
+    int expansions = 0;
+    size_t bytes = 0;
+};
+constexpr int MAX_VAR_EXPANSIONS = 2000;
+constexpr size_t MAX_VAR_BYTES = 64 * 1024;
+
+std::optional<string> resolveVarsBudgeted(string_view value, const Props &props,
+                                          int depth, VarBudget &budget)
 {
     if (depth > 8)
     {
@@ -1738,6 +1748,10 @@ std::optional<string> resolveVars(string_view value, const Props &props,
         {
             return std::nullopt;
         }
+        if (++budget.expansions > MAX_VAR_EXPANSIONS)
+        {
+            return std::nullopt;
+        }
 
         const auto inner = value.substr(at + 4, j - 1 - (at + 4));
         const auto comma = inner.find(',');
@@ -1746,14 +1760,20 @@ std::optional<string> resolveVars(string_view value, const Props &props,
         std::optional<string> replacement;
         if (found != props.end())
         {
-            replacement = resolveVars(found->second, props, depth + 1);
+            replacement =
+                resolveVarsBudgeted(found->second, props, depth + 1, budget);
         }
         else if (comma != NPOS)
         {
-            replacement = resolveVars(trimView(inner.substr(comma + 1)), props,
-                                      depth + 1);
+            replacement = resolveVarsBudgeted(trimView(inner.substr(comma + 1)),
+                                              props, depth + 1, budget);
         }
         if (!replacement)
+        {
+            return std::nullopt;
+        }
+        budget.bytes += replacement->size();
+        if (budget.bytes > MAX_VAR_BYTES)
         {
             return std::nullopt;
         }
@@ -1761,6 +1781,15 @@ std::optional<string> resolveVars(string_view value, const Props &props,
         i = j;
     }
     return out;
+}
+
+/// Replaces `var(--x, fallback)`. Returns nullopt if a variable is neither
+/// defined nor has a fallback, or if the expansion is absurdly large.
+std::optional<string> resolveVars(string_view value, const Props &props,
+                                  int depth = 0)
+{
+    VarBudget budget;
+    return resolveVarsBudgeted(value, props, depth, budget);
 }
 
 /// A time, or `calc(<time> / <number>)` / `calc(<time> * <number>)`, in ms.

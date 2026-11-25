@@ -25,7 +25,9 @@
 #include <QLocale>
 #include <QPainter>
 #include <QPixmap>
+#include <QRegularExpression>
 #include <QStringList>
+#include <QUrl>
 
 #include <algorithm>
 #include <map>
@@ -577,6 +579,23 @@ DggUser userNamed(const DggChannel *channel, const QString &nick)
     DggUser user;
     user.nick = nick;
     return user;
+}
+
+/// A handle on X: 1 to 15 letters, digits or underscores.
+bool isXHandle(const QString &handle)
+{
+    static const QRegularExpression re(QStringLiteral("^\\w{1,15}$"));
+    return re.match(handle).hasMatch();
+}
+
+/// A link a click may open: web pages only. `Link::Url` goes to
+/// QDesktopServices, which would also start `file:` or any registered
+/// protocol, and the address comes from the server.
+bool isHttpUrl(const QString &url)
+{
+    const QUrl parsed(url, QUrl::StrictMode);
+    return parsed.isValid() && !parsed.host().isEmpty() &&
+           (parsed.scheme() == u"https" || parsed.scheme() == u"http");
 }
 
 /// A clickable piece of text that opens `url`, in the colour of links.
@@ -1212,6 +1231,8 @@ MessagePtrMut DggMessageBuilder::makeDeathMessage(DggChannel *channel,
     {
         nickElement->addFlags(MessageElementFlag::DggRainbowUsername);
     }
+    // a click opens the user card, like every other name
+    nickElement->setLink(Link(Link::UserInfo, user.nick));
 
     // The cause is in italics and can contain emotes
     auto emoteContext = assets.emoteContextFor(user, false, backlog);
@@ -1516,11 +1537,18 @@ std::pair<MessagePtrMut, HighlightAlert> DggMessageBuilder::makeXPostMessage(
         builder.emplace<TimestampElement>(time.time());
     }
 
-    // The handle is not a chat user: it opens the profile on X
+    // The handle is not a chat user: it opens the profile on X. It comes
+    // from the server, so only a real handle (1-15 letters, digits or `_`)
+    // becomes part of a link.
     const QString handle = QChar(u'@') + post.handle;
-    emplaceHeaderText(builder, handle, MessageElementFlag::Text,
-                      MessageColor::Link, false, header)
-        ->setLink(Link(Link::Url, u"https://x.com/"_s + post.handle));
+    auto *handleElement =
+        emplaceHeaderText(builder, handle, MessageElementFlag::Text,
+                          MessageColor::Link, false, header);
+    if (isXHandle(post.handle))
+    {
+        handleElement->setLink(
+            Link(Link::Url, u"https://x.com/"_s + post.handle));
+    }
     appendEventWords(builder, QStringLiteral("posted on X"), header);
     const QString headerText = handle + QStringLiteral(" posted on X");
 
@@ -1540,7 +1568,7 @@ std::pair<MessagePtrMut, HighlightAlert> DggMessageBuilder::makeXPostMessage(
         {
             builder.addWordFromUserMessage(word);
         }
-        if (!post.url.isEmpty())
+        if (isHttpUrl(post.url))
         {
             emplaceLinkText(builder, QStringLiteral("View Post on X"),
                             post.url);
@@ -1552,7 +1580,7 @@ std::pair<MessagePtrMut, HighlightAlert> DggMessageBuilder::makeXPostMessage(
     }
     else
     {
-        if (!post.url.isEmpty())
+        if (isHttpUrl(post.url))
         {
             emplaceLinkText(builder, QStringLiteral("View Post on X"),
                             post.url);

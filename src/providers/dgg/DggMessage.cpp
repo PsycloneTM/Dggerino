@@ -694,12 +694,24 @@ std::optional<DggVestaboard> parseDggVestaboard(QStringView name,
     board.uuid = obj.value("uuid"_L1).toString();
     board.timestampMs = dggTimestampMs(obj, nowMs);
 
+    // The board is 6 x 22 tiles. The picture is as big as the data says, so
+    // a frame with a huge `characters` array would ask for a huge picture:
+    // whatever is past twice the real size is dropped.
     for (const auto &rowValue : obj.value("characters"_L1).toArray())
     {
+        if (board.characters.size() >= DGG_VESTABOARD_MAX_ROWS)
+        {
+            break;
+        }
         std::vector<int> row;
         for (const auto &code : rowValue.toArray())
         {
-            row.push_back(static_cast<int>(toInt64(code)));
+            if (row.size() >= DGG_VESTABOARD_MAX_COLUMNS)
+            {
+                break;
+            }
+            row.push_back(static_cast<int>(
+                std::clamp<qint64>(toInt64(code), -1000, 1000)));
         }
         board.characters.push_back(std::move(row));
     }
