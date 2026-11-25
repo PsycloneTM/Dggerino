@@ -576,15 +576,19 @@ void DggChatServer::sendChatMessage(DggChannel &chan, const QString &rawText)
         return;
     }
 
-    // `/mentions [nick] [limit]` and its short form `/m`: answered from the
-    // site's API, never said in chat.
+    // `/mentions [nick] [limit]` and its short form `/m`: disabled for now,
+    // destiny.gg answers /api/chat/mentions with 403 to everything but its
+    // own page. Still caught here so it is never said in chat. To bring it
+    // back, call `this->fetchMentions(chan, mentions.captured(1))` again.
     static const QRegularExpression mentionsCommand(
         QStringLiteral(R"(^/(?:mentions|m)(?:\s+(.*))?$)"),
         QRegularExpression::CaseInsensitiveOption |
             QRegularExpression::DotMatchesEverythingOption);
     if (const auto mentions = mentionsCommand.match(text); mentions.hasMatch())
     {
-        this->fetchMentions(chan, mentions.captured(1));
+        chan.addSystemMessage(
+            u"/mentions is disabled: destiny.gg no longer serves it to "
+            u"clients."_s);
         return;
     }
 
