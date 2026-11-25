@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 #include <vector>
 
 namespace chatterino {
@@ -229,6 +230,41 @@ QUrl dggBigscreenUrl(const QString &platform, const QString &id)
     auto url = dggSiteUrl(u"/bigscreen"_s);
     url.setFragment(platform + u'/' + id);
     return url;
+}
+
+QString dggMarkdownLink(const QString &text, const QUrl &url)
+{
+    // CommonMark: every ASCII punctuation character can be escaped
+    const auto isAsciiPunct = [](QChar c) {
+        const auto u = c.unicode();
+        return (u >= 33 && u <= 47) || (u >= 58 && u <= 64) ||
+               (u >= 91 && u <= 96) || (u >= 123 && u <= 126);
+    };
+
+    QString escaped;
+    escaped.reserve(text.size() * 2);
+    for (const QChar c : text)
+    {
+        if (isAsciiPunct(c))
+        {
+            escaped += QChar(u'\\');
+        }
+        escaped += c;
+    }
+
+    auto target = url.toString(QUrl::FullyEncoded);
+    const std::pair<QChar, QString> encoded[] = {
+        {QChar(u'('), u"%28"_s},  {QChar(u')'), u"%29"_s},
+        {QChar(u'['), u"%5B"_s},  {QChar(u']'), u"%5D"_s},
+        {QChar(u'<'), u"%3C"_s},  {QChar(u'>'), u"%3E"_s},
+        {QChar(u'\\'), u"%5C"_s}, {QChar(u' '), u"%20"_s},
+        {QChar(u'"'), u"%22"_s},
+    };
+    for (const auto &[from, to] : encoded)
+    {
+        target.replace(from, to);
+    }
+    return u"[%1](%2)"_s.arg(escaped, target);
 }
 
 QUrl dggLogsUrl(const QString &nick)
@@ -583,6 +619,22 @@ std::optional<DggPoll> parseDggPollStart(const QJsonObject &obj, qint64 nowMs)
     {
         return std::nullopt;
     }
+
+    // Everything here comes from the server and ends up in one text layout
+    // per option, rebuilt as the votes come in. A chat message is at most
+    // 512 characters, which also bounds what chat-gui can build a poll from,
+    // so these limits only cut what no real poll has.
+    constexpr qsizetype MAX_POLL_OPTIONS = 256;
+    constexpr qsizetype MAX_POLL_TEXT = 512;
+    if (poll.options.size() > MAX_POLL_OPTIONS)
+    {
+        poll.options.resize(MAX_POLL_OPTIONS);
+    }
+    for (auto &option : poll.options)
+    {
+        option.truncate(MAX_POLL_TEXT);
+    }
+    poll.question.truncate(MAX_POLL_TEXT);
 
     // One total for each option, whatever the server sent
     poll.totals.assign(static_cast<size_t>(poll.options.size()), 0);

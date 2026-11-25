@@ -173,8 +173,7 @@ void EmoteSource::initializeFromChannel(const Channel *channel)
 
     if (channel->isDggChannel())
     {
-        // only destiny.gg's own emotes; chat is read-only, so no check of who
-        // may use which
+        // only destiny.gg's own emotes, with no check of who may use which
         if (const auto *assets = app->getDggChatServer()->assets())
         {
             for (const auto &entry : assets->menuEmotes())

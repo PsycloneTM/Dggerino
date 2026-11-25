@@ -380,6 +380,12 @@ void DggAssets::rebuildEmotes()
                                        sheetSizeOf(entry.def.image));
             entry.contextual = this->css_.dependsOnContext(entry.def.prefix);
         }
+        if (!style.notes.isEmpty())
+        {
+            qCDebug(chatterinoDgg).noquote()
+                << "Emote" << entry.def.prefix << "is not fully reproduced:"
+                << style.notes.join(u"; "_s);
+        }
         entry.emote = makeEmote(entry.def, style);
         entry.style = std::move(style);
     }

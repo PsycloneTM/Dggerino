@@ -322,8 +322,7 @@ SelectChannelDialog::SelectChannelDialog(QWidget *parent)
 
         auto *dggLabel = new QLabel(
             "Join the destiny.gg (DGG) chat.<br>This is <b>very "
-            "experimental</b>. It's read-only for now and shows DGG emotes "
-            "only.");
+            "experimental</b>. It shows DGG emotes only.");
         dggLabel->setWordWrap(true);
         layout->addWidget(dggLabel);
 

@@ -42,14 +42,11 @@ public:
     Frames();
     /// With `oneShot`, the frames play once (from the first one, as soon as
     /// they are loaded) and the last one stays.
-    /// With `loopFrom` (not -1), the frames play from the first one, as soon
-    /// as they are loaded, and after the last one playback continues at
-    /// frame `loopFrom` for good.
     /// With `poses`, `frames` are the image's own frames and loop on the
     /// shared clock like any animated image; the CSS poses of `poses` (a
     /// slide, a shake, a flip) are a second, separate animation drawn over
     /// whichever frame is current (see `PosedLiveFrames`).
-    Frames(QList<Frame> &&frames, bool oneShot = false, qsizetype loopFrom = -1,
+    Frames(QList<Frame> &&frames, bool oneShot = false,
            std::shared_ptr<const SpriteSheetSpec> poses = nullptr);
     ~Frames();
 
@@ -79,7 +76,7 @@ QList<Frame> readFrames(QImageReader &reader, const Url &url,
                         std::optional<QSize> rescale = std::nullopt,
                         qint64 maxBytes = std::numeric_limits<qint64>::max());
 void assignFrames(std::weak_ptr<Image> weak, QList<Frame> parsed,
-                  bool oneShot = false, qsizetype loopFrom = -1,
+                  bool oneShot = false,
                   std::shared_ptr<const SpriteSheetSpec> poses = nullptr);
 
 }  // namespace chatterino::detail
@@ -186,7 +183,7 @@ private:
 
     friend class ImageExpirationPool;
     friend void detail::assignFrames(std::weak_ptr<Image>, QList<detail::Frame>,
-                                     bool, qsizetype,
+                                     bool,
                                      std::shared_ptr<const SpriteSheetSpec>);
 };
 

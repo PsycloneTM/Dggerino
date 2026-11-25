@@ -115,7 +115,7 @@ struct DggEmoteStyle {
 
     /// Things in the stylesheet that apply to this emote but that are not
     /// reproduced (a `transform`, an animation that isn't `steps()`, ...).
-    /// For logs and tests.
+    /// Logged (debug level) by `DggAssets::rebuildEmotes()`.
     QStringList notes;
 
     bool animated() const

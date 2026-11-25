@@ -2407,7 +2407,17 @@ std::optional<double> keyframePositionX(const std::vector<KeyframeStop> &stops,
                 const auto tokens = splitWhitespace(decl.value);
                 if (!tokens.empty())
                 {
-                    raw = tokens[0];
+                    // `top left`: with a vertical keyword first, x is the
+                    // second value (`top` alone leaves x at its centre)
+                    const auto first = toLower(tokens[0]);
+                    if (first == "top" || first == "bottom")
+                    {
+                        raw = tokens.size() >= 2 ? tokens[1] : "center";
+                    }
+                    else
+                    {
+                        raw = tokens[0];
+                    }
                     found = true;
                 }
             }
@@ -2425,7 +2435,6 @@ std::optional<double> keyframePositionX(const std::vector<KeyframeStop> &stops,
     return positionPx(raw, props, frame, sheet);
 }
 
-/// Evaluates the final property values of one emote.
 namespace anim = dggcss::anim;
 
 static_assert(static_cast<int>(anim::FilterKind::Brightness) ==
@@ -2498,13 +2507,6 @@ std::optional<string> backgroundPositionAsTranslate(string_view value,
     return string(buffer);
 }
 
-/// Animations of `transform`, `opacity`, `filter` and `clip-path` can't run
-/// in Chatterino, so they are baked: the keyframes are evaluated at a series
-/// of moments, and every moment becomes one frame of the emote (a "pose" on
-/// top of the frame the sheet shows). Only done if the emote has no sprite
-/// animation of its own; the two aren't combined.
-///
-/// Leaves `style` alone (adding a note) if the animations can't be baked.
 /// Properties that only mean something for the box of a `::before` /
 /// `::after` (applyPseudoElements()). The poses of an emote can't show them.
 constexpr std::array<anim::Prop, 11> BOX_PROPS{
@@ -2770,6 +2772,13 @@ bool combineWithSprite(DggEmoteStyle &style, const anim::Baked &baked,
     return true;
 }
 
+/// Animations of `transform`, `opacity`, `filter` and `clip-path` can't run
+/// in Chatterino, so they are baked: the keyframes are evaluated at a series
+/// of moments, and every moment becomes one frame of the emote (a "pose" on
+/// top of the frame the sheet shows). Only done if the emote has no sprite
+/// animation of its own; the two aren't combined.
+///
+/// Leaves `style` alone (adding a note) if the animations can't be baked.
 void bakeAnimations(const Props &props, const Keyframes &keyframes,
                     DggEmoteStyle &style, QSize sheetSize,
                     std::vector<string> &outNotes)
@@ -3158,6 +3167,7 @@ void applyStaticTransform(const Props &props, DggEmoteStyle &style,
     style.sprite.filters.clear();
 }
 
+/// Evaluates the final property values of one emote.
 DggEmoteStyle computeStyle(const Props &props, const Keyframes &keyframes,
                            QSize sheetSize)
 {
@@ -3536,8 +3546,10 @@ std::optional<double> lengthPx(const anim::LenOrAuto &value, double reference)
     {
         return std::nullopt;
     }
-    return value.len.percent ? value.len.value * reference / 100.0
-                             : value.len.value;
+    // `left: 1e300px` parses; positions reach the painter as they are
+    return clampPx(value.len.percent ? value.len.value * reference / 100.0
+                                     : value.len.value,
+                   MAX_PIXELS);
 }
 
 /// What a pseudo-element looks like when nothing animates.
@@ -3788,9 +3800,9 @@ SpriteOverlay overlayOf(const Props &props, const anim::Computed &state,
     o.height = lengthPx(state.height, box.height);
 
     o.matrix = saneMatrix(anim::matrixWithoutOrigin(state, box));
-    o.originX = state.origin.x.value;
+    o.originX = clampPx(state.origin.x.value, MAX_PIXELS);
     o.originXPercent = state.origin.x.percent;
-    o.originY = state.origin.y.value;
+    o.originY = clampPx(state.origin.y.value, MAX_PIXELS);
     o.originYPercent = state.origin.y.percent;
     o.opacity = std::isfinite(state.opacity) ? state.opacity : 1.0;
     for (const auto &fn : state.filter)
@@ -4254,7 +4266,11 @@ bool applyImageLayers(const Props &emote, const Props *beforeProps,
             R"(radial-gradient\(\s*black\s+([0-9.]+)%\s*,\s*transparent\s+([0-9.]+)%\s*\))");
         std::smatch m;
         const string value = toLower(*maskRaw);
-        if (std::regex_search(value, m, re))
+        // the real value is about 50 characters; `std::regex` has no limit
+        // of its own, so a stylesheet can't hand it something huge
+        constexpr size_t MAX_MASK_VALUE_LENGTH = 512;
+        if (value.size() <= MAX_MASK_VALUE_LENGTH &&
+            std::regex_search(value, m, re))
         {
             // `[0-9.]+` also matches "." and "1.2.3"
             const auto inner = parseNumber(m[1].str());

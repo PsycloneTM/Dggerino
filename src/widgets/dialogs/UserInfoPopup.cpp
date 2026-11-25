@@ -2009,10 +2009,12 @@ void UserInfoPopup::showDggUser(const DggUser &user, const DggProfile &profile)
     // what they watch first, as a link to that stream's bigscreen page
     if (!user.watchingPlatform.isEmpty())
     {
-        this->ui_.watchingLabel->setText(u"Watching: [%1 on %2](%3)"_s.arg(
-            user.watchingId, user.watchingPlatform,
-            dggBigscreenUrl(user.watchingPlatform, user.watchingId)
-                .toString(QUrl::FullyEncoded)));
+        // both values describe another user and come from the server
+        this->ui_.watchingLabel->setText(
+            u"Watching: "_s +
+            dggMarkdownLink(
+                u"%1 on %2"_s.arg(user.watchingId, user.watchingPlatform),
+                dggBigscreenUrl(user.watchingPlatform, user.watchingId)));
         this->ui_.watchingLabel->show();
     }
 

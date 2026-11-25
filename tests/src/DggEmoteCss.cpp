@@ -404,6 +404,31 @@ TEST(DggEmoteCss, AwareHasThirtyOneFrames)
     EXPECT_EQ(totalMs(style), 1300);
 }
 
+TEST(DggEmoteCss, KeyframePositionReadsXWhenAVerticalKeywordComesFirst)
+{
+    // `top right` is x = right, `bottom left` is x = left: the first token is
+    // only x if it is not top or bottom
+    const auto sheet = DggEmoteCss::parse(QStringLiteral(R"CSS(
+@keyframes Corner-anim {
+  0% { background-position: top right; }
+  100% { background-position: bottom left; }
+}
+.emote.Corner {
+  width: 100px;
+  height: 10px;
+  animation: Corner-anim 1s steps(10) forwards;
+}
+)CSS"));
+    const auto style = sheet.resolve(QStringLiteral("Corner"),
+                                     userContext("someone"), QSize(1000, 10));
+    ASSERT_TRUE(style.valid);
+    ASSERT_EQ(style.sprite.offsets.size(), 10U);
+    // right edge of a 1000 px sheet for a 100 px frame, then 9/10 of the way
+    // to the left edge
+    EXPECT_EQ(style.sprite.offsets.front().x(), 900);
+    EXPECT_EQ(style.sprite.offsets.back().x(), 90);
+}
+
 TEST(DggEmoteCss, BingqilinUsesIgorsRangeForIgor)
 {
     const auto normal = css().resolve(QStringLiteral("BINGQILIN"),

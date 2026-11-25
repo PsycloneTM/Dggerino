@@ -70,6 +70,12 @@ QUrl dggProfileUrl(const QString &nick);
 QUrl dggBigscreenUrl(const QString &platform, const QString &id);
 QUrl dggLogsUrl(const QString &nick);
 
+/// `[text](url)` for a markdown label, made safe for text and an address that
+/// come from the server: every ASCII punctuation character of `text` is
+/// escaped, and the characters of the address that would end or change the
+/// link are percent-encoded, so neither can add a link of its own.
+QString dggMarkdownLink(const QString &text, const QUrl &url);
+
 /// Reads the hashed images (`<name>.<hash>.png`: the stock profile pictures,
 /// the icon sheet, ...) out of a page of the site and remembers where each
 /// is, replacing what it knew. The hashes change when the site is rebuilt, so

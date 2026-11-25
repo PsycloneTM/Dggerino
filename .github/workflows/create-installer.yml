@@ -29,9 +29,12 @@ permissions:
 
 jobs:
   # Decides what (if anything) this run may publish:
-  #   auto    - triggered by a push build: previous behaviour (nightly for
-  #             untagged commits, draft release for tagged commits)
-  #   none    - manual run, build only
+  #   auto    - triggered by a push build in this repository: previous
+  #             behaviour (nightly for untagged commits, draft release for
+  #             tagged commits)
+  #   none    - manual run, build only; also any run that was started by
+  #             something other than a push to this repository (a pull
+  #             request, possibly from a fork, must never publish)
   #   nightly - manual run, publish to the nightly-build release
   #   stable  - manual run, create the draft release (commit must be tagged v*)
   release-mode:
@@ -45,9 +48,11 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           TRIGGER_EVENT: ${{ github.event.workflow_run.event }}
           TRIGGER_TITLE: ${{ github.event.workflow_run.display_title }}
+          TRIGGER_HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          THIS_REPO: ${{ github.repository }}
           MANUAL_RELEASE: ${{ inputs.release }}
         run: |
-          mode=auto
+          mode=none
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             mode="$MANUAL_RELEASE"
           elif [ "$TRIGGER_EVENT" = "workflow_dispatch" ]; then
@@ -57,6 +62,8 @@ jobs:
               *"release: stable"*) mode=stable ;;
               *) mode=none ;;
             esac
+          elif [ "$TRIGGER_EVENT" = "push" ] && [ "$TRIGGER_HEAD_REPO" = "$THIS_REPO" ]; then
+            mode=auto
           fi
           echo "Release mode: $mode"
           echo "MODE=$mode" >> "$GITHUB_OUTPUT"
@@ -65,8 +72,10 @@ jobs:
   create-installer:
     needs: release-mode
     runs-on: ${{ matrix.os }}
-    # Only run manually or when a build succeeds
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # Only run manually, or when a build of a push or a manual run succeeds.
+    # Builds of pull requests (which can come from forks) are not packaged,
+    # because this job has write access to the releases.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') && github.event.workflow_run.head_repository.full_name == github.repository) }}
     strategy:
       matrix:
         qt-version: ["6.12.0"]

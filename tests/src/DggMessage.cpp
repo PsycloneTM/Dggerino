@@ -3,6 +3,7 @@
 #include "providers/dgg/DggCombo.hpp"
 #include "Test.hpp"
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
@@ -379,6 +380,29 @@ TEST(DggMessage, SiteUrlsComeFromOnePlace)
     EXPECT_EQ(dggLogsUrl(u"MiXeD"_s).query(), u"username=mixed"_s);
 }
 
+TEST(DggMessage, MarkdownLinkCannotAddALinkOfItsOwn)
+{
+    // an id that tries to end the link text and open another link
+    const auto hostile = u"x](https://evil.example)[y"_s;
+    const auto link =
+        dggMarkdownLink(hostile + u" on kick"_s,
+                        dggBigscreenUrl(u"kick"_s, hostile));
+    // every bracket and parenthesis of the text is escaped
+    EXPECT_TRUE(
+        link.startsWith(u"[x\\]\\(https\\:\\/\\/evil\\.example\\)\\[y on kick]("_s))
+        << link.toStdString();
+    // the address holds nothing that could close the link: exactly one `(`,
+    // the one that opens it, and one `)`, the last character
+    const auto target = link.mid(link.indexOf(u"](") + 1);
+    EXPECT_EQ(target.count(u'('), 1);
+    EXPECT_EQ(target.count(u')'), 1);
+    EXPECT_TRUE(target.endsWith(u')'));
+
+    // an ordinary stream gets an ordinary link
+    EXPECT_EQ(dggMarkdownLink(u"a"_s, QUrl(u"https://x.y/z"_s)),
+              u"[a](https://x.y/z)"_s);
+}
+
 TEST(DggMessage, ParsesUserInfo)
 {
     const auto doc = QJsonDocument::fromJson(
@@ -607,6 +631,28 @@ TEST(DggMessage, PollTotalsAreMadeToFitTheOptions)
         NOW);
     ASSERT_TRUE(more);
     EXPECT_EQ(more->totals, (std::vector<qint64>{2}));
+}
+
+TEST(DggMessage, PollStartIsLimitedInSize)
+{
+    QJsonArray options;
+    for (int i = 0; i < 1000; i++)
+    {
+        options.append(i == 0 ? QString(2000, u'o') : QString::number(i));
+    }
+    QJsonObject poll;
+    poll.insert(QStringLiteral("question"), QString(2000, u'q'));
+    poll.insert(QStringLiteral("options"), options);
+    poll.insert(QStringLiteral("nick"), QStringLiteral("Mod"));
+
+    const auto parsed = parseDggPollStart(poll, NOW);
+    ASSERT_TRUE(parsed);
+    EXPECT_EQ(parsed->options.size(), 256);
+    EXPECT_EQ(parsed->options.front().size(), 512);
+    EXPECT_EQ(parsed->options.back(), QStringLiteral("255"));
+    EXPECT_EQ(parsed->question.size(), 512);
+    // a total for each option that is left, no more
+    EXPECT_EQ(parsed->totals.size(), 256U);
 }
 
 TEST(DggMessage, PollStartNeedsAQuestionAndOptions)

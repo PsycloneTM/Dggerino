@@ -117,8 +117,7 @@ public:
         bool patreonOnly = false;
     };
 
-    /// Every emote, whoever may use it. Chat is read-only, so the emote menu
-    /// shows all of them. Each emote looks the way it does without a user.
+    /// Every emote, whoever may use it: the emote menu shows all of them. Each emote looks the way it does without a user.
     std::vector<MenuEmote> menuEmotes() const;
 
     /// The emote called `name` as the emote menu has it, or null.

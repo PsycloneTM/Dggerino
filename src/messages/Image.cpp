@@ -33,6 +33,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <numeric>
@@ -98,10 +99,9 @@ struct Frames::Storage {
 /// Stores all decoded frames in memory.
 struct Frames::CachedFrames : Storage {
     CachedFrames() = default;
-    CachedFrames(QList<Frame> frames, bool oneShot, qsizetype loopFrom = -1)
+    CachedFrames(QList<Frame> frames, bool oneShot)
         : items(std::move(frames))
         , oneShot(oneShot)
-        , loopFrom(loopFrom)
     {
     }
     ~CachedFrames() override = default;
@@ -140,13 +140,12 @@ struct Frames::CachedFrames : Storage {
             return;
         }
 
-        this->clock = timer;
         this->lastPosition = timer->position();
         this->gifTimerConnection = timer->signal.connect([this, timer] {
             this->advance(timer->position());
         });
 
-        if (this->oneShot || this->loopFrom >= 0)
+        if (this->oneShot)
         {
             // starts at the first frame, whatever the clock says
             this->index = 0;
@@ -179,7 +178,7 @@ struct Frames::CachedFrames : Storage {
                                ? position - this->lastPosition
                                : GIF_FRAME_LENGTH;
         this->lastPosition = position;
-        if (!this->oneShot && this->loopFrom < 0)
+        if (!this->oneShot)
         {
             // an endless loop: read the phase off the clock every time, so
             // no rounding or paused time can ever add up
@@ -196,42 +195,13 @@ struct Frames::CachedFrames : Storage {
                 return;
             }
         }
-        // A one-shot (or an intro) must not run while nobody ticks the
+        // A one-shot must not run while nobody ticks the
         // animation: the clock never pauses, so after a pause (window not
         // focused, a stalled GUI thread) `delta` is huge and the whole thing
         // would be over before it was seen. Cap what a tick can add.
         this->durationOffset +=
             static_cast<int>(std::min<unsigned long>(delta, 100UL));
         this->processOffset();
-    }
-
-    /// Re-enters the endless part (`from` on) at the phase of the shared
-    /// clock, so it stays in step with every other copy of the image.
-    void enterLoop(qsizetype from)
-    {
-        this->index = from;
-        if (this->clock == nullptr)
-        {
-            return;
-        }
-        qint64 total = 0;
-        for (auto i = from; i < this->items.size(); i++)
-        {
-            total += this->items.at(i).duration;
-        }
-        if (total <= 0)
-        {
-            return;
-        }
-        auto phase = static_cast<qint64>(this->clock->position() % total);
-        auto i = from;
-        while (i + 1 < this->items.size() && phase > this->items.at(i).duration)
-        {
-            phase -= this->items.at(i).duration;
-            i++;
-        }
-        this->index = i;
-        this->durationOffset = static_cast<int>(phase);
     }
 
     void processOffset()
@@ -254,26 +224,6 @@ struct Frames::CachedFrames : Storage {
             {
                 // resting; keeps the offset from growing for ever
                 this->durationOffset = 0;
-            }
-            return;
-        }
-
-        if (this->loopFrom >= 0)
-        {
-            // plays through, then loops from `loopFrom` on
-            const auto size = this->items.size();
-            const auto from = std::min(this->loopFrom, size - 1);
-            for (qsizetype guard = 0;
-                 guard < size * 4 + 8 &&
-                 this->durationOffset > this->items.at(this->index).duration;
-                 guard++)
-            {
-                this->durationOffset -= this->items.at(this->index).duration;
-                this->index++;
-                if (this->index >= size)
-                {
-                    this->enterLoop(from);
-                }
             }
             return;
         }
@@ -314,14 +264,10 @@ struct Frames::CachedFrames : Storage {
     QList<Frame> items;
     QList<Frame>::size_type index{0};
     int durationOffset{0};
-    GIFTimer *clock{nullptr};
     unsigned long lastPosition{0};
 
     /// Plays once and stays on the last frame
     bool oneShot = false;
-
-    /// If not -1: after the last frame, playback continues here
-    qsizetype loopFrom = -1;
 };
 
 /// The image's own frames (an APNG or GIF) and the CSS poses of its emote
@@ -498,12 +444,12 @@ Frames::Frames()
     DebugCount::increase(DebugObject::Image);
 }
 
-Frames::Frames(QList<Frame> &&frames, bool oneShot, qsizetype loopFrom,
+Frames::Frames(QList<Frame> &&frames, bool oneShot,
                std::shared_ptr<const SpriteSheetSpec> poses)
     : storage_(poses ? std::unique_ptr<Storage>(
                            std::make_unique<PosedLiveFrames>(frames, poses))
                      : std::unique_ptr<Storage>(std::make_unique<CachedFrames>(
-                           std::move(frames), oneShot, loopFrom)))
+                           std::move(frames), oneShot)))
 {
     assertInGuiThread();
     auto *app = tryGetApp();
@@ -659,20 +605,19 @@ QList<Frame> readFrames(QImageReader &reader, const Url &url,
 }
 
 void assignFrames(std::weak_ptr<Image> weak, QList<Frame> parsed, bool oneShot,
-                  qsizetype loopFrom,
                   std::shared_ptr<const SpriteSheetSpec> poses)
 {
     static bool isPushQueued;
 
     auto cb = [parsed = std::move(parsed), weak = std::move(weak), oneShot,
-               loopFrom, poses = std::move(poses)]() mutable {
+               poses = std::move(poses)]() mutable {
         auto shared = weak.lock();
         if (!shared)
         {
             return;
         }
         shared->frames_ = std::make_unique<detail::Frames>(
-            std::move(parsed), oneShot, loopFrom, std::move(poses));
+            std::move(parsed), oneShot, std::move(poses));
         if (shared->autoScale_)
         {
             // FIXME: We should actually scale the pixmaps. However, we'd also
@@ -783,6 +728,18 @@ ImagePtr Image::fromSpriteSheet(const Url &url, const SpriteSheetSpec &spec)
     if (!shared)
     {
         cache[key] = shared = ImagePtr(new Image(url, spec));
+
+        // Each use of a finite-loop emote has a key of its own, so dead
+        // entries pile up. Drop them whenever the map has doubled.
+        static size_t sweepAt = 1024;
+        if (cache.size() >= sweepAt)
+        {
+            for (auto it = cache.begin(); it != cache.end();)
+            {
+                it = it->second.expired() ? cache.erase(it) : std::next(it);
+            }
+            sweepAt = std::max<size_t>(1024, cache.size() * 2);
+        }
     }
 
     return shared;
@@ -1197,7 +1154,7 @@ void Image::actuallyLoad()
                 // in, a shake, a flip) run on their own over whichever frame
                 // is current. Nothing is mixed in advance, so nothing has to
                 // line up or restart when the poses end.
-                assignFrames(shared, std::move(native), false, -1,
+                assignFrames(shared, std::move(native), false,
                              std::make_shared<const SpriteSheetSpec>(spec));
                 return;
             }

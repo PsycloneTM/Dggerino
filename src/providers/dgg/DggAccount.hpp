@@ -16,8 +16,8 @@ namespace chatterino {
 /// `loginKey` is the key created under "Dgg App Connections" on
 /// https://www.destiny.gg/profile/developer. It is stored in plain text in
 /// the settings file, like the Twitch and Kick tokens. It authenticates the
-/// chat socket (as the `authtoken` cookie) and `/api/userinfo?token=`.
-/// Never log it, and never log a URL containing it.
+/// chat socket (as the `authtoken` cookie) and nothing else: it is never sent
+/// to a site URL. Never log it.
 struct DggAccountData {
     QString username;
     uint64_t userID = 0;
