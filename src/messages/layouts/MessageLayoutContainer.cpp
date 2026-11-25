@@ -303,6 +303,8 @@ void MessageLayoutContainer::paintElements(QPainter &painter,
     {
         painter.save();
         painter.setRenderHint(QPainter::SmoothPixmapTransform);
+        // a layer's opacity is on top of whatever the caller already set
+        const qreal baseOpacity = painter.opacity();
         for (size_t i = 0; i < this->backgroundLayers_.size(); i++)
         {
             const auto &layer = this->backgroundLayers_[i];
@@ -316,7 +318,7 @@ void MessageLayoutContainer::paintElements(QPainter &painter,
             {
                 continue;
             }
-            painter.setOpacity(layer.opacity);
+            painter.setOpacity(baseOpacity * layer.opacity);
             painter.drawPixmap(this->backgroundRect_, *pixmap, QRectF());
         }
         painter.restore();

@@ -184,8 +184,20 @@ namespace {
 QRectF pixmapRectOf(const Image &image, const QRectF &rect)
 {
     const auto margins = image.canvasMargins();
-    return rect.adjusted(-margins.left(), -margins.top(), margins.right(),
-                         margins.bottom());
+    if (margins.isNull())
+    {
+        return rect;
+    }
+
+    // `canvasMargins()` is in the image's own scale, while `rect` is the
+    // image's size times the layout scale (the UI scale and the emote scale).
+    // The margins get the same factor, or the canvas is drawn too small or
+    // too large as soon as that factor isn't 1.
+    const auto size = image.size();
+    const qreal kx = size.width() > 0 ? rect.width() / size.width() : 1.0;
+    const qreal ky = size.height() > 0 ? rect.height() / size.height() : 1.0;
+    return rect.adjusted(-margins.left() * kx, -margins.top() * ky,
+                         margins.right() * kx, margins.bottom() * ky);
 }
 
 }  // namespace

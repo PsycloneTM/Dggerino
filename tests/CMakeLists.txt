@@ -13,6 +13,7 @@ set(test_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/src/NetworkRequest.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/NetworkResult.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/ChatterSet.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/src/ApngDecoder.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/DggAccount.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/DggEmoteCss.cpp
     ${CMAKE_CURRENT_LIST_DIR}/src/DggFrame.cpp
