@@ -163,15 +163,25 @@ std::optional<double> parseTimeMs(string_view s)
     {
         return std::nullopt;
     }
+    double ms = 0;
     if (dim->second == "ms")
     {
-        return dim->first;
+        ms = dim->first;
     }
-    if (dim->second == "s")
+    else if (dim->second == "s")
     {
-        return dim->first * 1000.0;
+        ms = dim->first * 1000.0;
     }
-    return std::nullopt;
+    else
+    {
+        return std::nullopt;
+    }
+    // `1e306s` is a finite number and not finite milliseconds
+    if (!std::isfinite(ms))
+    {
+        return std::nullopt;
+    }
+    return ms;
 }
 
 /// An angle in degrees. A bare `0` is allowed, too.
@@ -2599,8 +2609,9 @@ std::optional<Baked> bake(const std::vector<Animation> &animations,
         return std::nullopt;
     }
 
-    const int count =
-        static_cast<int>(std::ceil(total / options.stepMs - 1e-9));
+    // at least one frame: a tiny total (1e-320s) would round down to none
+    const int count = std::max(
+        1, static_cast<int>(std::ceil(total / options.stepMs - 1e-9)));
     out.frames.reserve(static_cast<size_t>(count));
     for (int k = 0; k < count; k++)
     {
@@ -2682,8 +2693,9 @@ std::optional<BakedLayers> bakeLayers(const std::vector<LayerInput> &layers,
         out.truncated = true;
     }
 
-    const int count =
-        static_cast<int>(std::ceil(total / options.stepMs - 1e-9));
+    // at least one frame: a tiny total (1e-320s) would round down to none
+    const int count = std::max(
+        1, static_cast<int>(std::ceil(total / options.stepMs - 1e-9)));
     out.frames.reserve(static_cast<size_t>(count));
     for (int k = 0; k < count; k++)
     {

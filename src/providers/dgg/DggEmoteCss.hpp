@@ -109,7 +109,8 @@ struct DggEmoteStyle {
         return this->valid && !this->backgroundSize.isEmpty() &&
                !this->sprite.hasPoses() && this->sprite.offsets.size() == 1 &&
                this->sprite.offsets[0] == QPoint(0, 0) &&
-               this->sprite.filters.empty();
+               this->sprite.filters.empty() && !this->sprite.hasOverlays() &&
+               this->sprite.canvasSize.isEmpty();
     }
 
     /// Things in the stylesheet that apply to this emote but that are not

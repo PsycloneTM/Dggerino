@@ -33,6 +33,61 @@ constexpr size_t NPOS = string::npos;
 /// to cut up (and it would need an absurd amount of memory).
 constexpr int MAX_STEPS = 1000;
 
+/// The biggest frame, canvas or image layer box (px) we draw. A
+/// stylesheet that asks for more is treated as if it gave no size: a box
+/// of `1e300px` would be undefined behaviour in the conversion to `int` and,
+/// below that, gigabytes of memory.
+constexpr double MAX_PIXELS = 2048;
+
+/// The biggest picture `background-size` may scale the sheet to. A sprite
+/// sheet is long and thin (emotes.css has 5544 x 34 and 7144 x 30), so this
+/// limits each side and the area instead of the frame size above.
+constexpr double MAX_SHEET_SIDE = 16384;
+constexpr double MAX_SHEET_AREA = 16.0 * 1024 * 1024;
+
+bool sheetSizeOk(double width, double height)
+{
+    return width >= 1 && height >= 1 && width <= MAX_SHEET_SIDE &&
+           height <= MAX_SHEET_SIDE && width * height <= MAX_SHEET_AREA;
+}
+
+/// The longest animation duration (ms) that is taken as it is.
+constexpr double MAX_DURATION_MS = 3600000;  // an hour
+
+/// Positions, offsets and margins are limited to +-this (px) before they are
+/// rounded to an `int`.
+constexpr double MAX_OFFSET_PX = 1e6;
+
+/// The biggest font size (px) an overlay is drawn with.
+constexpr double MAX_FONT_PX = 1024;
+
+/// A transform with an entry bigger than this is not drawn.
+constexpr double MAX_MATRIX_ENTRY = 1e6;
+
+/// `v` limited to +-`limit`. NaN gives 0.
+double clampPx(double v, double limit)
+{
+    return std::isnan(v) ? 0.0 : std::clamp(v, -limit, limit);
+}
+
+/// `std::lround()` and the cast to `int` are undefined if the value doesn't
+/// fit, and stylesheet numbers can be anything (`width: 1e300px`).
+int roundToInt(double v)
+{
+    return static_cast<int>(std::lround(clampPx(v, MAX_OFFSET_PX)));
+}
+
+/// The matrix as Qt gets it. A huge `scale()` or a bezier that runs away gives
+/// inf or NaN, which isn't drawn at all: such a pose is the identity.
+std::array<double, 6> saneMatrix(const dggcss::anim::Matrix &m)
+{
+    const std::array<double, 6> out{m.a, m.b, m.c, m.d, m.e, m.f};
+    const bool sane = std::all_of(out.begin(), out.end(), [](double v) {
+        return std::isfinite(v) && std::abs(v) <= MAX_MATRIX_ENTRY;
+    });
+    return sane ? out : std::array<double, 6>{1, 0, 0, 1, 0, 0};
+}
+
 using Props = std::unordered_map<string, string>;
 using Keyframes = std::unordered_map<string, std::vector<dggcss::KeyframeStop>>;
 
@@ -277,15 +332,25 @@ std::optional<double> parseTimeMs(string_view s)
         return std::nullopt;
     }
     const auto unit = s.substr(pos);
+    double ms = 0;
     if (unit == "s")
     {
-        return *value * 1000.0;
+        ms = *value * 1000.0;
     }
-    if (unit == "ms")
+    else if (unit == "ms")
     {
-        return *value;
+        ms = *value;
     }
-    return std::nullopt;
+    else
+    {
+        return std::nullopt;
+    }
+    // `1e306s` is finite as a number and not as milliseconds
+    if (!std::isfinite(ms))
+    {
+        return std::nullopt;
+    }
+    return ms;
 }
 
 // ---------------------------------------------------------------------------
@@ -1823,15 +1888,25 @@ std::optional<double> evalDurationMs(string_view value, const Props &props)
     {
         return std::nullopt;
     }
+    double result = 0;
     if (inner[op] == '/')
     {
         if (*rhs == 0.0)
         {
             return std::nullopt;
         }
-        return *lhs / *rhs;
+        result = *lhs / *rhs;
     }
-    return *lhs * *rhs;
+    else
+    {
+        result = *lhs * *rhs;
+    }
+    // `calc(1e300s * 1e300)` is inf; NaN would get past a `< 1` check
+    if (!std::isfinite(result))
+    {
+        return std::nullopt;
+    }
+    return result;
 }
 
 struct Steps {
@@ -2376,14 +2451,19 @@ static_assert(static_cast<int>(anim::FilterKind::Brightness) ==
 SpritePose poseOf(const anim::Computed &state, const anim::Box &box)
 {
     SpritePose pose;
-    const auto m = anim::matrixOf(state, box);
-    pose.matrix = {m.a, m.b, m.c, m.d, m.e, m.f};
-    pose.opacity = state.opacity;
+    pose.matrix = saneMatrix(anim::matrixOf(state, box));
+    pose.opacity = std::isfinite(state.opacity) ? state.opacity : 1.0;
     for (const auto &fn : state.filter)
     {
         pose.filters.push_back(toSpriteFilter(fn));
     }
     pose.clip = anim::clipPx(state.clip, box);
+    if (!std::all_of(pose.clip.begin(), pose.clip.end(), [](const auto &p) {
+            return std::isfinite(p.first) && std::isfinite(p.second);
+        }))
+    {
+        pose.clip.clear();  // no clip at all rather than a broken one
+    }
     return pose;
 }
 
@@ -3104,9 +3184,10 @@ DggEmoteStyle computeStyle(const Props &props, const Keyframes &keyframes,
 
     const auto width = length("width");
     const auto height = length("height");
-    if (!width || !height || *width < 1 || *height < 1)
+    if (!width || !height || *width < 1 || *height < 1 ||
+        *width > MAX_PIXELS || *height > MAX_PIXELS)
     {
-        return style;  // not valid: no size
+        return style;  // not valid: no size (or one we won't draw)
     }
 
     // `background-size: 32px 32px` (or one value for both) shrinks or
@@ -3118,27 +3199,30 @@ DggEmoteStyle computeStyle(const Props &props, const Keyframes &keyframes,
             const string_view text = trimView(*resolved);
             const auto space = text.find(' ');
             const auto first = parseLengthPx(text.substr(0, space));
-            // one value is the width; the height is `auto` (the proportions
-            // of the image). Same as a square size for a square image.
+            // `auto` is the proportions of the image (the same as a square
+            // size for a square image): the height of `32px` and of
+            // `32px auto`
+            const auto autoHeight = [&]() -> std::optional<double> {
+                if (first && !sheetSize.isEmpty())
+                {
+                    return *first * sheetSize.height() / sheetSize.width();
+                }
+                return first;
+            };
             std::optional<double> second;
             if (space != string_view::npos)
             {
                 const auto rest = trimView(text.substr(space + 1));
-                second = rest == "auto" ? first : parseLengthPx(rest);
-            }
-            else if (first && !sheetSize.isEmpty())
-            {
-                second = *first * sheetSize.height() / sheetSize.width();
+                second = rest == "auto" ? autoHeight() : parseLengthPx(rest);
             }
             else
             {
-                second = first;
+                second = autoHeight();
             }
-            if (first && second && *first >= 1 && *second >= 1)
+            if (first && second && sheetSizeOk(*first, *second))
             {
                 style.backgroundSize =
-                    QSize(static_cast<int>(std::lround(*first)),
-                          static_cast<int>(std::lround(*second)));
+                    QSize(roundToInt(*first), roundToInt(*second));
             }
             else if (text != "auto" && text != "initial")
             {
@@ -3213,7 +3297,7 @@ DggEmoteStyle computeStyle(const Props &props, const Keyframes &keyframes,
             notes.push_back("animation " + name + ": timing " +
                             (timing ? *timing : string("?")));
         }
-        else if (!duration || *duration < 1)
+        else if (!duration || *duration < 1 || *duration > MAX_DURATION_MS)
         {
             notes.push_back("animation " + name + ": duration");
         }
@@ -3288,14 +3372,12 @@ DggEmoteStyle computeStyle(const Props &props, const Keyframes &keyframes,
     }
 
     style.valid = true;
-    style.frameSize = QSize(static_cast<int>(std::lround(*width)),
-                            static_cast<int>(std::lround(*height)));
+    style.frameSize = QSize(roundToInt(*width), roundToInt(*height));
     style.sprite.frameSize = style.frameSize;
     for (const double x : xs)
     {
         // a background moved left shows a part of the image further right
-        style.sprite.offsets.emplace_back(static_cast<int>(std::lround(-x)),
-                                          static_cast<int>(std::lround(-y0)));
+        style.sprite.offsets.emplace_back(roundToInt(-x), roundToInt(-y0));
     }
     style.sprite.durationsMs = std::move(durations);
 
@@ -3345,8 +3427,7 @@ DggEmoteStyle computeStyle(const Props &props, const Keyframes &keyframes,
 
             style.sprite.loopCount = loops;
             style.sprite.restOffset =
-                QPoint(static_cast<int>(std::lround(-restX)),
-                       static_cast<int>(std::lround(-y0)));
+                QPoint(roundToInt(-restX), roundToInt(-y0));
         }
         if (const auto delay = first("animation-delay");
             delay && *delay != "0s" && *delay != "0ms" && *delay != "0")
@@ -3674,7 +3755,8 @@ SpriteOverlay overlayOf(const Props &props, const anim::Computed &state,
     SpriteOverlay o;
     o.text = state.content.none ? QString()
                                 : QString::fromStdString(state.content.text);
-    o.fontPx = state.fontSize;
+    o.fontPx =
+        std::clamp(clampPx(state.fontSize, MAX_FONT_PX), 0.0, MAX_FONT_PX);
     if (const auto it = props.find("font-family"); it != props.end())
     {
         o.fontFamily = QString::fromStdString(it->second);
@@ -3689,13 +3771,14 @@ SpriteOverlay overlayOf(const Props &props, const anim::Computed &state,
             }
         }
     }
-    o.letterSpacingPx = state.letterSpacing;
+    o.letterSpacingPx = clampPx(state.letterSpacing, MAX_PIXELS);
     if (!state.lineHeight.isAuto)
     {
-        o.lineHeightPx =
+        o.lineHeightPx = clampPx(
             state.lineHeight.len.percent
                 ? state.lineHeight.len.value * state.fontSize / 100.0
-                : state.lineHeight.len.value;
+                : state.lineHeight.len.value,
+            MAX_PIXELS);
     }
     o.left = lengthPx(state.left, box.width);
     o.top = lengthPx(state.top, box.height);
@@ -3704,13 +3787,12 @@ SpriteOverlay overlayOf(const Props &props, const anim::Computed &state,
     o.width = lengthPx(state.width, box.width);
     o.height = lengthPx(state.height, box.height);
 
-    const auto m = anim::matrixWithoutOrigin(state, box);
-    o.matrix = {m.a, m.b, m.c, m.d, m.e, m.f};
+    o.matrix = saneMatrix(anim::matrixWithoutOrigin(state, box));
     o.originX = state.origin.x.value;
     o.originXPercent = state.origin.x.percent;
     o.originY = state.origin.y.value;
     o.originYPercent = state.origin.y.percent;
-    o.opacity = state.opacity;
+    o.opacity = std::isfinite(state.opacity) ? state.opacity : 1.0;
     for (const auto &fn : state.filter)
     {
         o.filters.push_back(toSpriteFilter(fn));
@@ -3719,10 +3801,11 @@ SpriteOverlay overlayOf(const Props &props, const anim::Computed &state,
     {
         o.shadows.push_back(SpriteShadow{
             .inset = shadow.inset,
-            .x = shadow.x,
-            .y = shadow.y,
-            .blur = shadow.blur,
-            .spread = shadow.spread,
+            .x = clampPx(shadow.x, MAX_PIXELS),
+            .y = clampPx(shadow.y, MAX_PIXELS),
+            .blur = std::clamp(clampPx(shadow.blur, MAX_PIXELS), 0.0,
+                               MAX_PIXELS),
+            .spread = clampPx(shadow.spread, MAX_PIXELS),
             .rgba = shadow.rgba,
         });
     }
@@ -3776,7 +3859,9 @@ void applyPseudoElements(const Props &emote, const Props *beforeProps,
     const double frameH = style.frameSize.height();
 
     const auto boxAnimation = boxAnimationOf(emote, keyframes);
-    const bool widened = boxAnimation.any && boxAnimation.width > frameW + 0.5;
+    const bool widened = boxAnimation.any &&
+                         boxAnimation.width > frameW + 0.5 &&
+                         boxAnimation.width <= MAX_PIXELS;
     const double boxW = widened ? boxAnimation.width : frameW;
     const anim::Box box{.width = boxW, .height = frameH};
 
@@ -4070,9 +4155,8 @@ void applyPseudoElements(const Props &emote, const Props *beforeProps,
         sprite.canvasMirror = mirrored;
         if (widened)
         {
-            const int canvasW = static_cast<int>(std::lround(boxW));
-            const int imageX =
-                static_cast<int>(std::lround(boxAnimation.imageX));
+            const int canvasW = roundToInt(boxW);
+            const int imageX = roundToInt(boxAnimation.imageX);
             sprite.canvasSize = QSize(canvasW, style.frameSize.height());
             sprite.canvasImagePos = QPoint(
                 mirrored ? canvasW - imageX - style.frameSize.width() : imageX,
@@ -4100,7 +4184,7 @@ std::optional<QSizeF> parseBackgroundSizeAuto(string_view raw,
     const string_view text = trimView(*resolved);
     const auto space = text.find(' ');
     const auto first = parseLengthPx(text.substr(0, space));
-    if (!first || *first < 1)
+    if (!first || *first < 1 || *first > MAX_SHEET_SIDE)
     {
         return std::nullopt;
     }
@@ -4117,6 +4201,12 @@ std::optional<QSizeF> parseBackgroundSizeAuto(string_view raw,
             }
             height = *second;
         }
+    }
+    // `auto` keeps the proportions of the image, which can make it less than
+    // a pixel tall (a 1px wide image of a 500 x 2 sheet) or enormous
+    if (!sheetSizeOk(*first, height))
+    {
+        return std::nullopt;
     }
     return QSizeF(*first, height);
 }
@@ -4278,7 +4368,9 @@ bool applyImageLayers(const Props &emote, const Props *beforeProps,
             return 0.0;
         }
         const auto resolved = resolveVars(*raw, p);
-        return resolved ? parseLengthPx(*resolved).value_or(0.0) : 0.0;
+        return resolved ? clampPx(parseLengthPx(*resolved).value_or(0.0),
+                                  MAX_OFFSET_PX)
+                        : 0.0;
     };
     double flowY = 0;
     double previousBottomMargin = 0;
@@ -4297,6 +4389,11 @@ bool applyImageLayers(const Props &emote, const Props *beforeProps,
         if (w < 1 || h < 1)
         {
             notes.emplace_back("pseudo-element without a size");
+            continue;
+        }
+        if (w > MAX_PIXELS || h > MAX_PIXELS)
+        {
+            notes.emplace_back("pseudo-element too big");
             continue;
         }
         // the margins of neighbouring blocks collapse; the first one is
@@ -4347,7 +4444,8 @@ bool DggEmoteStyle::isWholeImage(QSize sheetSize) const
            this->sprite.offsets.size() == 1 &&
            this->sprite.offsets[0] == QPoint(0, 0) &&
            this->frameSize == sheetSize && this->sprite.filters.empty() &&
-           !this->sprite.hasImageLayers();
+           !this->sprite.hasImageLayers() && !this->sprite.hasOverlays() &&
+           this->sprite.canvasSize.isEmpty();
 }
 
 QString DggEmoteStyle::cacheKey() const
