@@ -17,6 +17,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <limits>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -75,7 +76,8 @@ private:
 };
 
 QList<Frame> readFrames(QImageReader &reader, const Url &url,
-                        std::optional<QSize> rescale = std::nullopt);
+                        std::optional<QSize> rescale = std::nullopt,
+                        qint64 maxBytes = std::numeric_limits<qint64>::max());
 void assignFrames(std::weak_ptr<Image> weak, QList<Frame> parsed,
                   bool oneShot = false, qsizetype loopFrom = -1,
                   std::shared_ptr<const SpriteSheetSpec> poses = nullptr);

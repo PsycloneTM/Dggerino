@@ -1,5 +1,5 @@
 ![chatterinoLogo](https://user-images.githubusercontent.com/41973452/272541622-52457e89-5f16-4c83-93e7-91866c25b606.png)
-Chatterino DGG [![GitHub Actions Build (Windows, Ubuntu, MacOS)](https://github.com/PsycloneTM/dggerino/actions/workflows/build.yml/badge.svg?branch=Dgg)](https://github.com/PsycloneTM/dggerino/actions?query=workflow%3ABuild+branch%3Adgg)
+Chatterino DGG [![GitHub Actions Build (Windows, Ubuntu, MacOS)](https://github.com/PsycloneTM/dggerino/actions/workflows/build.yml/badge.svg?branch=dgg)](https://github.com/PsycloneTM/dggerino/actions?query=workflow%3ABuild+branch%3Adgg)
 ============
 
 Chatterino DGG is a fork of Chatterino 7 (itself a fork of Chatterino 2). This fork mainly contains features that aren't accepted into Chatterino 2, most notably Destiny.gg chat.
@@ -26,13 +26,13 @@ Chatterino DGG is a fork of Chatterino 7 (itself a fork of Chatterino 2). This f
 
 ### Downloads
 
-**Stable builds** can be downloaded from the [releases section](https://github.com/PsycloneTM/dgg/releases/latest).
+**Stable builds** can be downloaded from the [releases section](https://github.com/PsycloneTM/dggerino/releases/latest).
 
-To test new features, you can download the **nighly build** [here](https://github.com/PsycloneTM/dgg/releases/tag/nightly-build).
+To test new features, you can download the **nighly build** [here](https://github.com/PsycloneTM/dggerino/releases/tag/nightly-build).
 
 ### Issues
 
-If you have issues such as crashes or weird behaviour regarding Dgg features, report them [in the issue-section](https://github.com/PsycloneTM/dgg/issues). If you have issues with other features, please report them [in the upstream issue-section](https://github.com/Chatterino/chatterino2/issues).
+If you have issues such as crashes or weird behaviour regarding Dgg features, report them [in the issue-section](https://github.com/PsycloneTM/dggerino/issues). If you have issues with other features, please report them [in the upstream issue-section](https://github.com/Chatterino/chatterino2/issues).
 
 ### Discord
 

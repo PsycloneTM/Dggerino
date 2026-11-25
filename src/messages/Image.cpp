@@ -587,8 +587,7 @@ std::optional<QSize> Frames::frameSize() const
 }
 
 QList<Frame> readFrames(QImageReader &reader, const Url &url,
-                        std::optional<QSize> rescale,
-                        qint64 maxBytes = std::numeric_limits<qint64>::max())
+                        std::optional<QSize> rescale, qint64 maxBytes)
 {
     QList<Frame> frames;
     const int reportedCount = reader.imageCount();
