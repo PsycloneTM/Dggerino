@@ -383,8 +383,8 @@ void DggAssets::rebuildEmotes()
         if (!style.notes.isEmpty())
         {
             qCDebug(chatterinoDgg).noquote()
-                << "Emote" << entry.def.prefix << "is not fully reproduced:"
-                << style.notes.join(u"; "_s);
+                << "Emote" << entry.def.prefix
+                << "is not fully reproduced:" << style.notes.join(u"; "_s);
         }
         entry.emote = makeEmote(entry.def, style);
         entry.style = std::move(style);

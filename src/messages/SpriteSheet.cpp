@@ -396,8 +396,8 @@ void blurImage(QImage &image, double sigma)
     // (the picture is blurred into transparency either way), but its cost
     // and its `2 * radius + 1` grow with the value, which comes from the
     // stylesheet (and from interpolating keyframes).
-    sigma = std::min(sigma, static_cast<double>(
-                                std::max(image.width(), image.height())));
+    sigma = std::min(
+        sigma, static_cast<double>(std::max(image.width(), image.height())));
     const int radius = std::max(1, static_cast<int>(std::lround(sigma - 0.5)));
     for (int pass = 0; pass < 3; pass++)
     {

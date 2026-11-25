@@ -320,9 +320,9 @@ SelectChannelDialog::SelectChannelDialog(QWidget *parent)
         ui.dggPage = new QWidget;
         auto *layout = new QVBoxLayout(ui.dggPage);
 
-        auto *dggLabel = new QLabel(
-            "Join the destiny.gg (DGG) chat.<br>This is <b>very "
-            "experimental</b>. It shows DGG emotes only.");
+        auto *dggLabel =
+            new QLabel("Join the destiny.gg (DGG) chat.<br>This is <b>very "
+                       "experimental</b>. It shows DGG emotes only.");
         dggLabel->setWordWrap(true);
         layout->addWidget(dggLabel);
 

@@ -384,12 +384,11 @@ TEST(DggMessage, MarkdownLinkCannotAddALinkOfItsOwn)
 {
     // an id that tries to end the link text and open another link
     const auto hostile = u"x](https://evil.example)[y"_s;
-    const auto link =
-        dggMarkdownLink(hostile + u" on kick"_s,
-                        dggBigscreenUrl(u"kick"_s, hostile));
+    const auto link = dggMarkdownLink(hostile + u" on kick"_s,
+                                      dggBigscreenUrl(u"kick"_s, hostile));
     // every bracket and parenthesis of the text is escaped
-    EXPECT_TRUE(
-        link.startsWith(u"[x\\]\\(https\\:\\/\\/evil\\.example\\)\\[y on kick]("_s))
+    EXPECT_TRUE(link.startsWith(
+        u"[x\\]\\(https\\:\\/\\/evil\\.example\\)\\[y on kick]("_s))
         << link.toStdString();
     // the address holds nothing that could close the link: exactly one `(`,
     // the one that opens it, and one `)`, the last character
