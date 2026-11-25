@@ -20,7 +20,7 @@ Chatterino DGG is a fork of Chatterino 7 (itself a fork of Chatterino 2). This f
 
 - DGG viewer list
 
-- `/mentions` command
+- `/whisper` command
 
 - DGG account login with a login key, and sending messages
 
