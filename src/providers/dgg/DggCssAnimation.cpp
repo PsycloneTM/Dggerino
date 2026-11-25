@@ -2610,8 +2610,8 @@ std::optional<Baked> bake(const std::vector<Animation> &animations,
     }
 
     // at least one frame: a tiny total (1e-320s) would round down to none
-    const int count = std::max(
-        1, static_cast<int>(std::ceil(total / options.stepMs - 1e-9)));
+    const int count =
+        std::max(1, static_cast<int>(std::ceil(total / options.stepMs - 1e-9)));
     out.frames.reserve(static_cast<size_t>(count));
     for (int k = 0; k < count; k++)
     {
@@ -2694,8 +2694,8 @@ std::optional<BakedLayers> bakeLayers(const std::vector<LayerInput> &layers,
     }
 
     // at least one frame: a tiny total (1e-320s) would round down to none
-    const int count = std::max(
-        1, static_cast<int>(std::ceil(total / options.stepMs - 1e-9)));
+    const int count =
+        std::max(1, static_cast<int>(std::ceil(total / options.stepMs - 1e-9)));
     out.frames.reserve(static_cast<size_t>(count));
     for (int k = 0; k < count; k++)
     {

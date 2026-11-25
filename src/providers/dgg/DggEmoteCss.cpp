@@ -3184,8 +3184,8 @@ DggEmoteStyle computeStyle(const Props &props, const Keyframes &keyframes,
 
     const auto width = length("width");
     const auto height = length("height");
-    if (!width || !height || *width < 1 || *height < 1 ||
-        *width > MAX_PIXELS || *height > MAX_PIXELS)
+    if (!width || !height || *width < 1 || *height < 1 || *width > MAX_PIXELS ||
+        *height > MAX_PIXELS)
     {
         return style;  // not valid: no size (or one we won't draw)
     }
@@ -3774,11 +3774,11 @@ SpriteOverlay overlayOf(const Props &props, const anim::Computed &state,
     o.letterSpacingPx = clampPx(state.letterSpacing, MAX_PIXELS);
     if (!state.lineHeight.isAuto)
     {
-        o.lineHeightPx = clampPx(
-            state.lineHeight.len.percent
-                ? state.lineHeight.len.value * state.fontSize / 100.0
-                : state.lineHeight.len.value,
-            MAX_PIXELS);
+        o.lineHeightPx =
+            clampPx(state.lineHeight.len.percent
+                        ? state.lineHeight.len.value * state.fontSize / 100.0
+                        : state.lineHeight.len.value,
+                    MAX_PIXELS);
     }
     o.left = lengthPx(state.left, box.width);
     o.top = lengthPx(state.top, box.height);
@@ -3803,8 +3803,8 @@ SpriteOverlay overlayOf(const Props &props, const anim::Computed &state,
             .inset = shadow.inset,
             .x = clampPx(shadow.x, MAX_PIXELS),
             .y = clampPx(shadow.y, MAX_PIXELS),
-            .blur = std::clamp(clampPx(shadow.blur, MAX_PIXELS), 0.0,
-                               MAX_PIXELS),
+            .blur =
+                std::clamp(clampPx(shadow.blur, MAX_PIXELS), 0.0, MAX_PIXELS),
             .spread = clampPx(shadow.spread, MAX_PIXELS),
             .rgba = shadow.rgba,
         });
