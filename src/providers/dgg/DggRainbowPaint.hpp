@@ -17,8 +17,8 @@ class Paint;
 /// animated pass (repainted on the GIF timer) and leaves it out of the
 /// message's cached picture.
 ///
-/// All nicks share one clock (wall time), so every rainbow nick shows the
-/// same colours at the same moment.
+/// All nicks share one clock (`std::chrono::steady_clock`), so every rainbow
+/// nick shows the same colours at the same moment.
 const std::shared_ptr<Paint> &dggRainbowPaint();
 
 /// `text` drawn in the rainbow on a transparent pixmap of `size` (device

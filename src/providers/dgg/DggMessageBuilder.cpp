@@ -733,18 +733,24 @@ constexpr qreal VESTABOARD_DISPLAY_SCALE = 0.5;
 /// one would share its address with the next board, which would then show
 /// the previous board's picture). The same board again reuses its pixmap and
 /// image. Boards are small and rare (a few per hour), so they are kept.
+///
+/// The map is allocated and never freed on purpose: a function-local `static`
+/// map of `QPixmap`s would be destroyed after `QApplication` at exit, and a
+/// `QPixmap` must not be destroyed then (it warns or crashes on some
+/// platforms). The pointer stays reachable, so leak checkers do not report it.
 ImagePtr vestaboardImage(const std::vector<std::vector<int>> &rows)
 {
-    static std::map<std::vector<std::vector<int>>, QPixmap> pixmaps;
-    auto it = pixmaps.find(rows);
-    if (it == pixmaps.end())
+    static auto *pixmaps =
+        new std::map<std::vector<std::vector<int>>, QPixmap>();
+    auto it = pixmaps->find(rows);
+    if (it == pixmaps->end())
     {
         auto pixmap = vestaboardPixmap(rows);
         if (pixmap.isNull())
         {
             return nullptr;
         }
-        it = pixmaps.emplace(rows, std::move(pixmap)).first;
+        it = pixmaps->emplace(rows, std::move(pixmap)).first;
     }
     return Image::fromResourcePixmap(it->second, VESTABOARD_DISPLAY_SCALE);
 }

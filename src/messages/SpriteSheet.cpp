@@ -27,6 +27,12 @@ constexpr int MIN_FRAME_DURATION_MS = 20;
 
 constexpr double PI = 3.14159265358979323846;
 
+/// A repeated picture needing more copies than this is filled with one
+/// texture brush instead of one `drawImage()` call per copy. The real
+/// stylesheet needs a few dozen at most; the limit is for a stylesheet that
+/// repeats a tiny picture over a box of 2048 px (millions of calls).
+constexpr double MAX_TILE_DRAWS = 4096;
+
 using Rgba = std::array<double, 4>;
 
 double clamp01(double v)
@@ -187,6 +193,30 @@ QImage copyFrame(const QImage &source, QPoint offset, QSize size, bool tileX,
 
     QPainter painter(&out);
     painter.setCompositionMode(QPainter::CompositionMode_Source);
+
+    const double copies = (static_cast<double>(lastX) - firstX + 1) *
+                          (static_cast<double>(lastY) - firstY + 1);
+    if (copies > MAX_TILE_DRAWS)
+    {
+        // A tiny sheet repeated over a big frame: one texture brush, whose
+        // origin is where the sheet lies in the frame. The brush repeats in
+        // both directions, so the direction that does not repeat is limited
+        // to the one copy of the sheet there is (CSS `no-repeat`).
+        const int fromX = tileX ? 0 : std::max(0, -offset.x());
+        const int toX = tileX ? size.width()
+                              : std::min(size.width(), -offset.x() + w);
+        const int fromY = tileY ? 0 : std::max(0, -offset.y());
+        const int toY = tileY ? size.height()
+                              : std::min(size.height(), -offset.y() + h);
+        if (toX > fromX && toY > fromY)
+        {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QBrush(source));
+            painter.setBrushOrigin(-offset);
+            painter.drawRect(QRect(fromX, fromY, toX - fromX, toY - fromY));
+        }
+        return out;
+    }
     for (int ty = firstY; ty <= lastY; ty++)
     {
         for (int tx = firstX; tx <= lastX; tx++)
@@ -212,7 +242,13 @@ QImage copyFrame(const QImage &source, QPoint offset, QSize size, bool tileX,
 
 int toByte255(double v)
 {
-    return std::clamp(static_cast<int>(std::lround(v)), 0, 255);
+    // clamp as a double first: lround() of an infinite or huge value is
+    // unspecified (an infinite alpha came out transparent, not opaque)
+    if (std::isnan(v))
+    {
+        return 0;
+    }
+    return static_cast<int>(std::lround(std::clamp(v, 0.0, 255.0)));
 }
 
 QColor toQColor(const std::array<double, 4> &rgba)
@@ -1116,19 +1152,45 @@ QImage composeImageLayers(const QImage &image, const SpriteSheetSpec &spec)
                     startY -= h;
                 }
             }
-            for (double y = startY; y < boxSize.height(); y += h)
+            const double copiesX =
+                layer.tileX ? std::ceil((boxSize.width() - startX) / w) : 1.0;
+            const double copiesY =
+                layer.tileY ? std::ceil((boxSize.height() - startY) / h) : 1.0;
+            if (copiesX * copiesY > MAX_TILE_DRAWS && w * h <= 16.0e6)
             {
-                for (double x = startX; x < boxSize.width(); x += w)
+                // a tiny picture repeated over a big box: one tile as a
+                // picture of its own, repeated by the painter in one call
+                // (the tile size is rounded to whole pixels)
+                const QImage tile = source.scaled(
+                    std::max(1, static_cast<int>(std::lround(w))),
+                    std::max(1, static_cast<int>(std::lround(h))),
+                    Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(QBrush(tile));
+                painter.setBrushOrigin(QPointF(startX, startY));
+                // the brush repeats both ways; a layer that repeats one way
+                // only gets the one row or column there is
+                painter.drawRect(QRectF(layer.tileX ? 0.0 : startX,
+                                        layer.tileY ? 0.0 : startY,
+                                        layer.tileX ? boxSize.width() : w,
+                                        layer.tileY ? boxSize.height() : h));
+            }
+            else
+            {
+                for (double y = startY; y < boxSize.height(); y += h)
                 {
-                    painter.drawImage(QRectF(x, y, w, h), source);
-                    if (!layer.tileX)
+                    for (double x = startX; x < boxSize.width(); x += w)
+                    {
+                        painter.drawImage(QRectF(x, y, w, h), source);
+                        if (!layer.tileX)
+                        {
+                            break;
+                        }
+                    }
+                    if (!layer.tileY)
                     {
                         break;
                     }
-                }
-                if (!layer.tileY)
-                {
-                    break;
                 }
             }
         }

@@ -1112,6 +1112,24 @@ void Image::actuallyLoad()
                     shared->empty_ = true;
                     return;
                 }
+                // Every native frame becomes a canvas of `spec.frameSize`,
+                // which can be much bigger than the frame it replaces. Over
+                // the cap the emote stays a still picture (its first frame),
+                // as `sliceSpriteSheet` does for a sheet.
+                const double canvasBytes =
+                    double(spec.frameSize.width()) *
+                    double(spec.frameSize.height()) * 4.0;
+                if (canvasBytes * double(native.size()) >
+                    double(Image::maxBytesRam))
+                {
+                    qCDebug(chatterinoImage)
+                        << "layered animation too large in RAM, showing the"
+                        << "first frame only" << shared->url().string;
+                    while (native.size() > 1)
+                    {
+                        native.removeLast();
+                    }
+                }
                 for (auto &frame : native)
                 {
                     frame.image = QPixmap::fromImage(
