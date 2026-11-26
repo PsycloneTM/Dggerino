@@ -92,8 +92,10 @@ bool TooltipEntryWidget::refreshPixmap()
 
     if (!this->customSize.isEmpty())
     {
-        this->displayImage_->setPixmap(
-            pixmap->scaled(this->customSize, Qt::KeepAspectRatio));
+        // Smooth: the default (fast) scaling draws a stretched emote in
+        // blocks, which a one-resolution emote (DGG's) shows at every size
+        this->displayImage_->setPixmap(pixmap->scaled(
+            this->customSize, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 
         if (this->displayImage_->pixmap().size() != this->customSize)
         {

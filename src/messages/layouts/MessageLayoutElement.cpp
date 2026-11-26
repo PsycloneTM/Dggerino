@@ -200,6 +200,21 @@ QRectF pixmapRectOf(const Image &image, const QRectF &rect)
                          margins.right() * kx, margins.bottom() * ky);
 }
 
+/// `pixmap` is drawn bigger than it is (a zoomed-in chat, or a high-DPI
+/// screen). The animated elements are painted straight onto the chat view,
+/// and a painter stretches a pixmap without smoothing unless it is told to:
+/// an emote that only comes in one resolution (DGG's) is then drawn in blocks,
+/// while the static emotes, which are painted into a buffer that smooths, are
+/// not. Only stretching is smoothed: a pixmap that is drawn smaller was made
+/// for a bigger size and is left as it was.
+bool isUpscaled(const QPainter &painter, const QRectF &dest,
+                const QPixmap &pixmap)
+{
+    const qreal ratio = painter.device()->devicePixelRatioF();
+    return dest.width() * ratio > pixmap.width() + 0.5 ||
+           dest.height() * ratio > pixmap.height() + 0.5;
+}
+
 }  // namespace
 
 void ImageLayoutElement::paint(QPainter &painter,
@@ -232,15 +247,16 @@ bool ImageLayoutElement::paintAnimated(QPainter &painter, qreal yOffset)
         {
             auto rect = this->getRect();
             rect.moveTop(rect.y() + yOffset);
+            const auto dest = pixmapRectOf(*this->image_, QRectF(rect));
             const bool smooth =
-                this->getFlags().has(MessageElementFlag::TwitchGif);
+                this->getFlags().has(MessageElementFlag::TwitchGif) ||
+                isUpscaled(painter, dest, *pixmap);
             if (smooth)
             {
                 painter.save();
                 painter.setRenderHint(QPainter::SmoothPixmapTransform);
             }
-            painter.drawPixmap(pixmapRectOf(*this->image_, QRectF(rect)),
-                               *pixmap, QRectF());
+            painter.drawPixmap(dest, *pixmap, QRectF());
             if (smooth)
             {
                 painter.restore();
@@ -377,7 +393,18 @@ bool LayeredImageLayoutElement::paintAnimated(QPainter &painter, qreal yOffset)
                 QRectF destRect(0, 0, size.width(), size.height());
                 alignRectBottomCenter(destRect, fullRect);
 
+                // Smoothed when stretched, like the static layers are
+                const bool smooth = isUpscaled(painter, destRect, *pixmap);
+                if (smooth)
+                {
+                    painter.save();
+                    painter.setRenderHint(QPainter::SmoothPixmapTransform);
+                }
                 painter.drawPixmap(destRect, *pixmap, QRectF());
+                if (smooth)
+                {
+                    painter.restore();
+                }
                 animatedFlag = true;
             }
         }
