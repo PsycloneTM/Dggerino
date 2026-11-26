@@ -2,7 +2,7 @@
 Type=Application
 Version=1.0
 Name=Chatterino DGG
-Comment=Chat client for Twitch
+Comment=Chat client for destiny.gg
 Exec=chatterino
 Icon=com.chatterino.chatterino
 Terminal=false

@@ -3,8 +3,8 @@
 
 #define MyAppName "Chatterino DGG"
 #define MyAppVersion "2.5.6"
-#define MyAppPublisher "7TV"
-#define MyAppURL "https://www.chatterino.com"
+#define MyAppPublisher "PsycloneTM"
+#define MyAppURL "https://github.com/PsycloneTM/dggerino"
 #define MyAppExeName "chatterino.exe"
 
 ; used in build-installer.ps1
