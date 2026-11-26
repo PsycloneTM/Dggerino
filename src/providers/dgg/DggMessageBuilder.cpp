@@ -1638,10 +1638,8 @@ MessagePtrMut DggMessageBuilder::makePinBannerMessage(DggChannel *channel,
                                                       const DggPin &pin,
                                                       const DggAssets &assets)
 {
-    // The constructor with a time adds the normal timestamp element first,
-    // so the banner follows the timestamp settings (on/off, format) like a
-    // chat line does.
-    DggMessageBuilder builder(channel, pin.time());
+    // No timestamp: the banner shows when it was pinned in its own footer
+    DggMessageBuilder builder(channel);
     builder->channelName = channel->getName();
 
     // The flairs the event carries, else what the viewer list knows

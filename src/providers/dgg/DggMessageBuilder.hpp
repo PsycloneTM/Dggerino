@@ -164,11 +164,10 @@ public:
     static MessagePtrMut makePinMessage(DggChannel *channel, const DggPin &pin,
                                         bool backlog, const DggAssets &assets);
 
-    /// The text of the pinned-message banner, built like the line site shows
-    /// for the pin: a normal chat timestamp (so the timestamp settings
-    /// decide whether and how the time shows) followed by the text with
-    /// emotes, emoji, links and names. Not a chat line: it is only shown
-    /// by the banner and never added to a channel.
+    /// The text of the pinned-message banner: the text of the pin with
+    /// emotes, emoji, links and names, without a timestamp (the banner shows
+    /// the time in its footer). Not a chat line: it is only shown by the
+    /// banner and never added to a channel.
     static MessagePtrMut makePinBannerMessage(DggChannel *channel,
                                               const DggPin &pin,
                                               const DggAssets &assets);

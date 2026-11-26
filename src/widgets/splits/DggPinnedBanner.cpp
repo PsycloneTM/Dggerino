@@ -18,6 +18,7 @@
 #include <QDesktopServices>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLocale>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QPalette>
@@ -33,6 +34,8 @@
 namespace chatterino {
 
 namespace {
+
+constexpr auto MUTED_STYLE = "color: #adadb8;";
 
 /// The uuid of the pin the user closed last, so it stays closed after a
 /// restart.
@@ -50,6 +53,7 @@ DggPinnedBanner::DggPinnedBanner(QWidget *parent)
     , closeButton_(new LabelButton(QStringLiteral("\u2715"), this))
     , messageScrollArea_(new QScrollArea(this))
     , messageView_(new MessageView())
+    , footerLabel_(new QLabel(this))
 {
     this->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
 
@@ -89,6 +93,23 @@ DggPinnedBanner::DggPinnedBanner(QWidget *parent)
                                             QSizePolicy::Fixed);
     this->messageScrollArea_->setWidget(this->messageView_);
     contentBox->addWidget(this->messageScrollArea_);
+
+    // Footer: when it was pinned. A hidden label takes no room.
+    this->footerLabel_->setStyleSheet(MUTED_STYLE);
+    this->footerLabel_->setContentsMargins(0, 2, 0, 0);
+    contentBox->addWidget(this->footerLabel_);
+
+    // The footer follows the chat's timestamp settings
+    getSettings()->showTimestamps.connect(
+        [this](bool, auto) {
+            this->updateFooter();
+        },
+        this->signalHolder_, false);
+    getSettings()->timestampFormat.connect(
+        [this](const QString &, auto) {
+            this->updateFooter();
+        },
+        this->signalHolder_, false);
 
     // An emote that loads, or a setting that changes, can change the height
     QObject::connect(this->messageView_, &MessageView::heightChanged, this,
@@ -181,6 +202,7 @@ void DggPinnedBanner::refresh()
     }
     this->lastAreaWidth_ = -1;
     this->updateMessageHeight();
+    this->updateFooter();
 
     const bool dismissed =
         !pin.uuid.isEmpty() && dismissedPinSetting().getValue() == pin.uuid;
@@ -271,6 +293,25 @@ void DggPinnedBanner::updateMessageHeight()
         qBound(1, contentHeight, this->messageMaxHeight_));
 }
 
+void DggPinnedBanner::updateFooter()
+{
+    const auto channel = this->channel_.lock();
+    if (!getSettings()->showTimestamps || !channel ||
+        !channel->pinnedMessage())
+    {
+        this->footerLabel_->hide();
+        return;
+    }
+
+    // Formatted like the timestamps in chat
+    static const QLocale locale(QStringLiteral("en_US"));
+    const QString time =
+        locale.toString(channel->pinnedMessage()->time().time(),
+                        getSettings()->timestampFormat);
+    this->footerLabel_->setText(QStringLiteral("Pinned %1").arg(time));
+    this->footerLabel_->show();
+}
+
 void DggPinnedBanner::updateMessageHeightIfNeeded()
 {
     if (this->lastAreaWidth_ != this->messageScrollArea_->width())
@@ -347,6 +388,10 @@ void DggPinnedBanner::scaleChangedEvent(float newScale)
     QFont headerFont = this->pinnedByLabel_->font();
     headerFont.setPointSizeF(9.5F * newScale);
     this->pinnedByLabel_->setFont(headerFont);
+
+    QFont footerFont = this->footerLabel_->font();
+    footerFont.setPointSizeF(9.0F * newScale);
+    this->footerLabel_->setFont(footerFont);
 
     // The message view scales itself (the chat's fonts and emote sizes)
     this->messageMaxHeight_ = int(110 * newScale);

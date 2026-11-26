@@ -24,8 +24,8 @@ struct Link;
 /// its own close button or the pin button of the split header.
 ///
 /// The text is drawn like a chat line (a MessageView): emotes, emoji, links
-/// and names. The time it was pinned is the normal chat timestamp in front of
-/// the text, so it follows the timestamp settings (on/off and format).
+/// and names. The footer under it says when it was pinned; it is hidden while
+/// chat timestamps are off and uses the chat's timestamp format.
 class DggPinnedBanner final : public BaseWidget
 {
     Q_OBJECT
@@ -69,6 +69,9 @@ private:
     void updateMessageHeight();
     void updateMessageHeightIfNeeded();
 
+    /// Sets the "Pinned <time>" footer, or hides it if timestamps are off.
+    void updateFooter();
+
     /// A link or name in the message was clicked.
     void openLink(const Link &link);
 
@@ -79,6 +82,7 @@ private:
     LabelButton *closeButton_ = nullptr;
     QScrollArea *messageScrollArea_ = nullptr;
     MessageView *messageView_ = nullptr;
+    QLabel *footerLabel_ = nullptr;
 
     /// The pin that is shown (its uuid, or its text without one).
     QString shownId_;
