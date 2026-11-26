@@ -242,10 +242,10 @@ void DggPinnedBanner::updateMessageHeight()
     int contentHeight = this->messageView_->height();
     if (contentHeight > this->messageMaxHeight_)
     {
-        width = std::max(
-            1,
-            width - this->messageScrollArea_->verticalScrollBar()->sizeHint()
-                        .width());
+        width =
+            std::max(1, width - this->messageScrollArea_->verticalScrollBar()
+                                    ->sizeHint()
+                                    .width());
         this->messageView_->setWidth(width);
         contentHeight = this->messageView_->height();
     }
