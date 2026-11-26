@@ -296,7 +296,7 @@ void DggPinnedBanner::updateMessageHeight()
 void DggPinnedBanner::updateFooter()
 {
     const auto channel = this->channel_.lock();
-    if (!getSettings()->showTimestamps || !channel ||!channel->pinnedMessage())
+    if (!getSettings()->showTimestamps || !channel || !channel->pinnedMessage())
     {
         this->footerLabel_->hide();
         return;
