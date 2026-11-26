@@ -203,11 +203,11 @@ QImage copyFrame(const QImage &source, QPoint offset, QSize size, bool tileX,
         // both directions, so the direction that does not repeat is limited
         // to the one copy of the sheet there is (CSS `no-repeat`).
         const int fromX = tileX ? 0 : std::max(0, -offset.x());
-        const int toX = tileX ? size.width()
-                              : std::min(size.width(), -offset.x() + w);
+        const int toX =
+            tileX ? size.width() : std::min(size.width(), -offset.x() + w);
         const int fromY = tileY ? 0 : std::max(0, -offset.y());
-        const int toY = tileY ? size.height()
-                              : std::min(size.height(), -offset.y() + h);
+        const int toY =
+            tileY ? size.height() : std::min(size.height(), -offset.y() + h);
         if (toX > fromX && toY > fromY)
         {
             painter.setPen(Qt::NoPen);

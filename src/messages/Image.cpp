@@ -1116,9 +1116,9 @@ void Image::actuallyLoad()
                 // which can be much bigger than the frame it replaces. Over
                 // the cap the emote stays a still picture (its first frame),
                 // as `sliceSpriteSheet` does for a sheet.
-                const double canvasBytes =
-                    double(spec.frameSize.width()) *
-                    double(spec.frameSize.height()) * 4.0;
+                const double canvasBytes = double(spec.frameSize.width()) *
+                                           double(spec.frameSize.height()) *
+                                           4.0;
                 if (canvasBytes * double(native.size()) >
                     double(Image::maxBytesRam))
                 {
