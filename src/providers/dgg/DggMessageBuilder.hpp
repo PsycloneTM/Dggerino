@@ -164,6 +164,23 @@ public:
     static MessagePtrMut makePinMessage(DggChannel *channel, const DggPin &pin,
                                         bool backlog, const DggAssets &assets);
 
+    /// The text of the pinned-message banner, built like the line site shows
+    /// for the pin: a normal chat timestamp (so the timestamp settings
+    /// decide whether and how the time shows) followed by the text with
+    /// emotes, emoji, links and names. Not a chat line: it is only shown
+    /// by the banner and never added to a channel.
+    static MessagePtrMut makePinBannerMessage(DggChannel *channel,
+                                              const DggPin &pin,
+                                              const DggAssets &assets);
+
+    /// A piece of text of the poll banner (the question, or an option with
+    /// its number in front): emotes, emoji, links and names like a chat line,
+    /// without a timestamp. Only shown by the banner, never added to a
+    /// channel.
+    static MessagePtrMut makePollTextMessage(DggChannel *channel,
+                                             const QString &text,
+                                             const DggAssets &assets);
+
     DggChannel *channel() const
     {
         return this->channel_;

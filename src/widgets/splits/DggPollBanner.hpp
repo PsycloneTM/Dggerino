@@ -14,6 +14,8 @@ namespace chatterino {
 
 class DggChannel;
 class LabelButton;
+class MessageView;
+struct Link;
 
 /// The banner under the split header that shows the poll that is running in
 /// destiny.gg chat: who started it, the question, a bar for each option with
@@ -25,6 +27,10 @@ class LabelButton;
 ///
 /// Clicking an option votes for it (like chat-gui), while the poll runs and the
 /// user is logged in and hasn't voted yet.
+///
+/// The question and the options are drawn like chat lines (MessageView), so
+/// they show emotes, emoji, links and names. The option views let mouse clicks
+/// through to the bars below them.
 class DggPollBanner final : public BaseWidget
 {
     Q_OBJECT
@@ -37,6 +43,8 @@ public:
 
 protected:
     void scaleChangedEvent(float newScale) override;
+    void themeChangedEvent() override;
+    void resizeEvent(QResizeEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
 
 private:
@@ -46,6 +54,19 @@ private:
     /// 100 ms however many votes come in.
     void scheduleRefresh();
     void refresh();
+
+    /// Shows the header and the question of the poll. The question is only
+    /// built again when it changed.
+    void updateTexts();
+
+    /// Hands the poll and the colours to the options view.
+    void updateOptions();
+
+    /// Wraps the question to the width of the banner.
+    void updateQuestionWidth();
+
+    /// A link or name in the question was clicked.
+    void openLink(const Link &link);
 
     /// Sizes the scroll area to the options: as tall as they are (an option
     /// that is wider than a line wraps and takes more), up to
@@ -71,7 +92,7 @@ private:
     QLabel *infoLabel_ = nullptr;
     QLabel *statusLabel_ = nullptr;
     LabelButton *closeButton_ = nullptr;
-    QLabel *questionLabel_ = nullptr;
+    MessageView *questionView_ = nullptr;
     QScrollArea *optionsScrollArea_ = nullptr;
     /// Draws the options (defined in the .cpp)
     QWidget *optionsView_ = nullptr;
@@ -90,6 +111,9 @@ private:
 
     /// DggPoll::key() of the poll that is being handled
     QString currentKey_;
+
+    /// The question `questionView_` shows
+    QString shownQuestion_;
 
     /// The user closed the banner for this poll.
     bool closed_ = false;

@@ -1634,6 +1634,49 @@ MessagePtrMut DggMessageBuilder::makePinMessage(DggChannel *channel,
     return builder.release();
 }
 
+MessagePtrMut DggMessageBuilder::makePinBannerMessage(DggChannel *channel,
+                                                      const DggPin &pin,
+                                                      const DggAssets &assets)
+{
+    // The constructor with a time adds the normal timestamp element first,
+    // so the banner follows the timestamp settings (on/off, format) like a
+    // chat line does.
+    DggMessageBuilder builder(channel, pin.time());
+    builder->channelName = channel->getName();
+
+    // The flairs the event carries, else what the viewer list knows
+    const DggUser user = pin.user.features.isEmpty()
+                             ? userNamed(channel, pin.user.nick)
+                             : pin.user;
+    if (!user.nick.isEmpty())
+    {
+        builder->loginName = user.nick.toLower();
+        builder->displayName = user.nick;
+    }
+
+    const QString text =
+        appendEventMessageText(builder, pin.text, user, assets, channel, false);
+    builder->messageText = text;
+    builder->searchText = text;
+    return builder.release();
+}
+
+MessagePtrMut DggMessageBuilder::makePollTextMessage(DggChannel *channel,
+                                                     const QString &text,
+                                                     const DggAssets &assets)
+{
+    // No timestamp: the constructor without a time adds none
+    DggMessageBuilder builder(channel);
+    builder->channelName = channel->getName();
+
+    const DggUser nobody{};
+    const QString shown =
+        appendEventMessageText(builder, text, nobody, assets, channel, false);
+    builder->messageText = shown;
+    builder->searchText = shown;
+    return builder.release();
+}
+
 std::pair<MessagePtrMut, HighlightAlert>
     DggMessageBuilder::makeVestaboardMessage(DggChannel *channel,
                                              const DggVestaboard &board,

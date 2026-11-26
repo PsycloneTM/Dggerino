@@ -1,27 +1,37 @@
 #include "widgets/splits/DggPinnedBanner.hpp"
 
+#include "Application.hpp"
 #include "common/ChatterinoSetting.hpp"
-#include "common/LinkParser.hpp"
+#include "messages/Link.hpp"
 #include "providers/dgg/DggChannel.hpp"
+#include "providers/dgg/DggChatServer.hpp"
 #include "providers/dgg/DggMessage.hpp"
+#include "providers/dgg/DggMessageBuilder.hpp"
 #include "singletons/Settings.hpp"
 #include "singletons/Theme.hpp"
+#include "util/IncognitoBrowser.hpp"
 #include "widgets/buttons/LabelButton.hpp"
+#include "widgets/helper/ChannelView.hpp"
+#include "widgets/helper/MessageView.hpp"
+#include "widgets/splits/Split.hpp"
 
+#include <QDesktopServices>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QPalette>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QShowEvent>
+#include <QUrl>
 #include <QVBoxLayout>
+
+#include <algorithm>
 
 namespace chatterino {
 
 namespace {
-
-constexpr auto MUTED_STYLE = "color: #adadb8;";
 
 /// The uuid of the pin the user closed last, so it stays closed after a
 /// restart.
@@ -31,35 +41,6 @@ QStringSetting &dismissedPinSetting()
     return setting;
 }
 
-/// The pinned text as the label shows it: escaped, with the links clickable.
-QString pinnedRichText(const QString &text, const QColor &linkColor)
-{
-    QStringList out;
-    const QStringList words =
-        text.simplified().split(QChar(u' '), Qt::SkipEmptyParts);
-    for (const auto &word : words)
-    {
-        const auto link = linkparser::parse(word);
-        if (!link)
-        {
-            out << word.toHtmlEscaped();
-            continue;
-        }
-
-        QString url = link->link.toString();
-        if (link->protocol.isEmpty())
-        {
-            url = QStringLiteral("https://") + url;
-        }
-        out << QStringLiteral("%1<a href=\"%2\" style=\"color: %3\">%4</a>%5")
-                   .arg(link->prefix(word).toString().toHtmlEscaped(),
-                        url.toHtmlEscaped(), linkColor.name(),
-                        link->link.toString().toHtmlEscaped(),
-                        link->suffix(word).toString().toHtmlEscaped());
-    }
-    return out.join(QChar(u' '));
-}
-
 }  // namespace
 
 DggPinnedBanner::DggPinnedBanner(QWidget *parent)
@@ -67,8 +48,7 @@ DggPinnedBanner::DggPinnedBanner(QWidget *parent)
     , pinnedByLabel_(new QLabel(this))
     , closeButton_(new LabelButton(QStringLiteral("\u2715"), this))
     , messageScrollArea_(new QScrollArea(this))
-    , messageLabel_(new QLabel(this))
-    , footerLabel_(new QLabel(this))
+    , messageView_(new MessageView())
 {
     this->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
 
@@ -90,18 +70,11 @@ DggPinnedBanner::DggPinnedBanner(QWidget *parent)
     headerRow->addWidget(this->closeButton_);
     contentBox->addLayout(headerRow);
 
-    // Message body
-    this->messageLabel_->setWordWrap(true);
-    this->messageLabel_->setTextFormat(Qt::RichText);
-    this->messageLabel_->setOpenExternalLinks(true);
-    this->messageLabel_->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-    this->messageLabel_->setStyleSheet("background: transparent;");
-    this->messageLabel_->setSizePolicy(QSizePolicy::Expanding,
-                                       QSizePolicy::Preferred);
-    this->messageLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse |
-                                                 Qt::LinksAccessibleByMouse);
+    // Message body: drawn like a chat line, so it has the emotes
+    this->messageView_->setBackground(MessageView::Background::Header);
 
-    this->messageScrollArea_->setWidgetResizable(true);
+    // The view has the size of its wrapped text, the area scrolls it
+    this->messageScrollArea_->setWidgetResizable(false);
     this->messageScrollArea_->setHorizontalScrollBarPolicy(
         Qt::ScrollBarAlwaysOff);
     this->messageScrollArea_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
@@ -113,17 +86,18 @@ DggPinnedBanner::DggPinnedBanner(QWidget *parent)
     this->messageScrollArea_->viewport()->setAutoFillBackground(false);
     this->messageScrollArea_->setSizePolicy(QSizePolicy::Expanding,
                                             QSizePolicy::Fixed);
-    this->messageScrollArea_->setWidget(this->messageLabel_);
+    this->messageScrollArea_->setWidget(this->messageView_);
     contentBox->addWidget(this->messageScrollArea_);
 
-    // Footer: when it was pinned
-    auto *footerRow = new QHBoxLayout();
-    footerRow->setContentsMargins(0, 2, 0, 0);
-    footerRow->setSpacing(4);
-    this->footerLabel_->setStyleSheet(MUTED_STYLE);
-    footerRow->addWidget(this->footerLabel_);
-    footerRow->addStretch(1);
-    contentBox->addLayout(footerRow);
+    // An emote that loads, or a setting that changes, can change the height
+    QObject::connect(this->messageView_, &MessageView::heightChanged, this,
+                     [this] {
+                         this->updateMessageHeight();
+                     });
+    QObject::connect(this->messageView_, &MessageView::linkClicked, this,
+                     [this](const Link &link) {
+                         this->openLink(link);
+                     });
 
     outerBox->addLayout(contentBox);
 
@@ -151,6 +125,7 @@ void DggPinnedBanner::setChannel(const std::shared_ptr<DggChannel> &channel)
 {
     this->connections_.clear();
     this->channel_ = channel;
+    this->messageView_->setChannel(channel);
 
     if (channel)
     {
@@ -194,12 +169,17 @@ void DggPinnedBanner::refresh()
         pin.user.nick.isEmpty() ? QStringLiteral("Pinned message")
                                 : QStringLiteral("Pinned by <b>%1</b>")
                                       .arg(pin.user.nick.toHtmlEscaped()));
-    this->messageLabel_->setText(
-        pinnedRichText(pin.text, this->theme->messages.textColors.link));
+
+    // The text as a chat line, with the pin's time as a normal timestamp in
+    // front: it shows (or not) and is formatted like the chat's timestamps
+    if (const auto *assets = getApp()->getDggChatServer()->assets())
+    {
+        this->messageView_->setWrappedMessage(
+            DggMessageBuilder::makePinBannerMessage(channel.get(), pin,
+                                                    *assets));
+    }
+    this->lastAreaWidth_ = -1;
     this->updateMessageHeight();
-    this->footerLabel_->setText(
-        QStringLiteral("Pinned %1")
-            .arg(pin.time().toString(getSettings()->timestampFormat)));
 
     const bool dismissed =
         !pin.uuid.isEmpty() && dismissedPinSetting().getValue() == pin.uuid;
@@ -252,13 +232,22 @@ void DggPinnedBanner::toggleUserPinned()
 
 void DggPinnedBanner::updateMessageHeight()
 {
-    // Wrapped height of the label at the current viewport width.
-    this->lastViewportWidth_ = this->messageScrollArea_->viewport()->width();
-    int contentHeight =
-        this->messageLabel_->heightForWidth(this->lastViewportWidth_);
-    if (contentHeight <= 0)
+    // Wrap the message to the width of the area. If it is taller than the cap
+    // a scrollbar takes some of that width, so it is wrapped again to what is
+    // left.
+    int width = std::max(1, this->messageScrollArea_->width());
+    this->lastAreaWidth_ = width;
+    this->messageView_->setWidth(width);
+
+    int contentHeight = this->messageView_->height();
+    if (contentHeight > this->messageMaxHeight_)
     {
-        contentHeight = this->messageLabel_->sizeHint().height();
+        width = std::max(
+            1,
+            width - this->messageScrollArea_->verticalScrollBar()->sizeHint()
+                        .width());
+        this->messageView_->setWidth(width);
+        contentHeight = this->messageView_->height();
     }
 
     // Size to content, but never taller than the cap.
@@ -268,10 +257,42 @@ void DggPinnedBanner::updateMessageHeight()
 
 void DggPinnedBanner::updateMessageHeightIfNeeded()
 {
-    if (this->lastViewportWidth_ !=
-        this->messageScrollArea_->viewport()->width())
+    if (this->lastAreaWidth_ != this->messageScrollArea_->width())
     {
         this->updateMessageHeight();
+    }
+}
+
+void DggPinnedBanner::openLink(const Link &link)
+{
+    switch (link.type)
+    {
+        case Link::Url: {
+            if (getSettings()->openLinksIncognito && supportsIncognitoLinks())
+            {
+                openLinkIncognito(link.value);
+            }
+            else
+            {
+                QDesktopServices::openUrl(QUrl(link.value));
+            }
+        }
+        break;
+
+        case Link::UserInfo: {
+            // The user card belongs to the split's chat view
+            auto *split = dynamic_cast<Split *>(this->parentWidget());
+            const auto channel = this->channel_.lock();
+            if (split != nullptr && channel)
+            {
+                split->getChannelView().showUserInfoPopup(
+                    link.value, MessagePlatform::Dgg, channel->getName());
+            }
+        }
+        break;
+
+        default:
+            break;
     }
 }
 
@@ -311,15 +332,9 @@ void DggPinnedBanner::scaleChangedEvent(float newScale)
     headerFont.setPointSizeF(9.5F * newScale);
     this->pinnedByLabel_->setFont(headerFont);
 
-    QFont bodyFont = this->messageLabel_->font();
-    bodyFont.setPointSizeF(11.0F * newScale);
-    this->messageLabel_->setFont(bodyFont);
+    // The message view scales itself (the chat's fonts and emote sizes)
     this->messageMaxHeight_ = int(110 * newScale);
     this->updateMessageHeight();
-
-    QFont footerFont = this->footerLabel_->font();
-    footerFont.setPointSizeF(9.0F * newScale);
-    this->footerLabel_->setFont(footerFont);
 }
 
 void DggPinnedBanner::mousePressEvent(QMouseEvent * /*event*/)

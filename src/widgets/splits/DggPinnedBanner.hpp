@@ -14,6 +14,8 @@ namespace chatterino {
 
 class DggChannel;
 class LabelButton;
+class MessageView;
+struct Link;
 
 /// The banner between the split header and the chat that shows the message
 /// pinned in destiny.gg chat. It is the DGG counterpart of
@@ -21,9 +23,9 @@ class LabelButton;
 /// look, but there is no expiry and no moderator menu, and it is hidden with
 /// its own close button or the pin button of the split header.
 ///
-/// The text is plain (emote names are shown as words, links can be clicked):
-/// a Qt label can't draw chat emotes. The line "Nick pinned a message: ..."
-/// that appears in the chat when a message is pinned has the emotes.
+/// The text is drawn like a chat line (a MessageView): emotes, emoji, links
+/// and names. The time it was pinned is the normal chat timestamp in front of
+/// the text, so it follows the timestamp settings (on/off and format).
 class DggPinnedBanner final : public BaseWidget
 {
     Q_OBJECT
@@ -67,14 +69,16 @@ private:
     void updateMessageHeight();
     void updateMessageHeightIfNeeded();
 
+    /// A link or name in the message was clicked.
+    void openLink(const Link &link);
+
     std::weak_ptr<DggChannel> channel_;
     pajlada::Signals::SignalHolder connections_;
 
     QLabel *pinnedByLabel_ = nullptr;
     LabelButton *closeButton_ = nullptr;
     QScrollArea *messageScrollArea_ = nullptr;
-    QLabel *messageLabel_ = nullptr;
-    QLabel *footerLabel_ = nullptr;
+    MessageView *messageView_ = nullptr;
 
     /// The pin that is shown (its uuid, or its text without one).
     QString shownId_;
@@ -86,7 +90,7 @@ private:
 
     /// Scaled cap for the message area.
     int messageMaxHeight_ = 110;
-    int lastViewportWidth_ = -1;
+    int lastAreaWidth_ = -1;
 };
 
 }  // namespace chatterino

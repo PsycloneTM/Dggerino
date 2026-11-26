@@ -1,12 +1,20 @@
 #include "widgets/splits/DggPollBanner.hpp"
 
 #include "Application.hpp"
+#include "messages/Link.hpp"
 #include "providers/dgg/DggChannel.hpp"
 #include "providers/dgg/DggChatServer.hpp"
+#include "providers/dgg/DggMessageBuilder.hpp"
+#include "singletons/Settings.hpp"
 #include "singletons/Theme.hpp"
+#include "util/IncognitoBrowser.hpp"
 #include "widgets/buttons/LabelButton.hpp"
+#include "widgets/helper/ChannelView.hpp"
+#include "widgets/helper/MessageView.hpp"
+#include "widgets/splits/Split.hpp"
 
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QFontMetrics>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -15,9 +23,8 @@
 #include <QPaintEvent>
 #include <QResizeEvent>
 #include <QScrollArea>
-#include <QTextLayout>
-#include <QTextOption>
 #include <QTimer>
+#include <QUrl>
 #include <QVariantAnimation>
 #include <QVBoxLayout>
 
@@ -53,36 +60,13 @@ qint64 allVotes(const DggPoll &poll)
     return std::max(poll.votesCast, sum);
 }
 
-/// Lays `layout` out in lines no wider than `width`, breaking at spaces (or
-/// inside a word that is wider than a line) and returns its height.
-int layoutText(QTextLayout &layout, int width)
-{
-    QTextOption option;
-    option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
-    layout.setTextOption(option);
-
-    layout.beginLayout();
-    qreal y = 0;
-    for (;;)
-    {
-        QTextLine line = layout.createLine();
-        if (!line.isValid())
-        {
-            break;
-        }
-        line.setLineWidth(width);
-        line.setPosition(QPointF(0, y));
-        y += line.height();
-    }
-    layout.endLayout();
-    return static_cast<int>(std::ceil(y));
-}
-
 /// The options of a poll, one row each: a bar as wide as the share of the
 /// votes, the number and text of the option on the left and the share on the
-/// right. An option that doesn't fit on a line wraps and its row grows. The
-/// option the user voted for has an outline; after the poll the winner (or
-/// each option of a tie) is drawn stronger.
+/// right. The text of an option is a MessageView (emotes, emoji, links) that
+/// sits on top of the row; it wraps if it doesn't fit on a line and its row
+/// grows. The views let mouse clicks through, so a click on a row is a click on
+/// the bar. The option the user voted for has an outline; after the poll the
+/// winner (or each option of a tie) is drawn stronger.
 class PollOptionsView final : public QWidget
 {
 public:
@@ -108,6 +92,10 @@ public:
     /// Called with the 1-based number of the option that was clicked
     std::function<void(int)> optionClicked;
 
+    /// Makes the message that shows the text of an option (its number in
+    /// front). Returns nullptr if there is no way to make one yet.
+    std::function<MessagePtr(const QString &)> makeMessage;
+
     void setPoll(const DggPoll &poll, const QColor &text, const QColor &accent,
                  float scale)
     {
@@ -121,6 +109,7 @@ public:
         this->text_ = text;
         this->accent_ = accent;
         this->scale_ = scale;
+        this->syncViews();
         // an option can be clicked to vote for it while the user still may
         this->setCursor(poll.ended || !poll.canVote ? Qt::ArrowCursor
                                                     : Qt::PointingHandCursor);
@@ -264,10 +253,8 @@ protected:
             painter.drawText(box.adjusted(0, 0, -pad, 0),
                              Qt::AlignRight | Qt::AlignVCenter, row.share);
 
-            // "1  Option" on the left, wrapped before it reaches the share
-            row.layout->draw(
-                &painter,
-                QPointF(pad, row.top + (row.height - row.textHeight) / 2.0));
+            // "1 Option" on the left is the row's MessageView, which is a
+            // child widget and drawn over this
         }
     }
 
@@ -278,7 +265,8 @@ private:
         /// The height of the wrapped text
         int textHeight = 0;
         QString share;
-        std::unique_ptr<QTextLayout> layout;
+        /// Shows the option's text (owned by this widget)
+        MessageView *view = nullptr;
     };
 
     /// How wide each bar is, 0 to 1: the share of the votes. A hidden poll
@@ -346,35 +334,118 @@ private:
             .arg(votes == 1 ? QStringLiteral("vote") : QStringLiteral("votes"));
     }
 
+    /// Makes one view for each option, and gives a view the text of its option
+    /// when that changed. A view that stays is not rebuilt, so votes coming in
+    /// don't make the emotes flicker.
+    void syncViews()
+    {
+        const auto count = static_cast<size_t>(this->poll_.options.size());
+
+        // A poll with fewer options than the one before
+        while (this->views_.size() > count)
+        {
+            this->views_.back()->hide();
+            this->views_.back()->deleteLater();
+            this->views_.pop_back();
+            this->shownTexts_.pop_back();
+        }
+
+        for (size_t i = 0; i < count; i++)
+        {
+            // "1 Option", on one line however the option was written
+            QString text = QString::number(static_cast<int>(i) + 1) +
+                           QChar(u' ') +
+                           this->poll_.options[static_cast<qsizetype>(i)];
+            text.replace(QChar(u'\n'), QChar(u' '));
+            text.replace(QChar(u'\r'), QChar(u' '));
+
+            if (i >= this->views_.size())
+            {
+                auto *view = new MessageView();
+                view->setParent(this);
+                view->setBackground(MessageView::Background::Transparent);
+                // A click on an option is a click on its bar
+                view->setAttribute(Qt::WA_TransparentForMouseEvents);
+                QObject::connect(view, &MessageView::heightChanged, this,
+                                 [this] {
+                                     this->viewHeightChanged();
+                                 });
+                view->show();
+                this->views_.push_back(view);
+                // A null string: never equal to `text`
+                this->shownTexts_.push_back(QString());
+            }
+
+            if (this->shownTexts_[i] != text)
+            {
+                this->shownTexts_[i] = text;
+                this->views_[i]->setWrappedMessage(
+                    this->makeMessage ? this->makeMessage(text) : nullptr);
+            }
+        }
+    }
+
+    /// The text of an option changed its height (an emote loaded, say).
+    void viewHeightChanged()
+    {
+        if (this->relayouting_)
+        {
+            // relayout() reads the heights itself
+            return;
+        }
+
+        const int before = this->contentHeight_;
+        this->relayout();
+        this->update();
+        if (this->contentHeight_ != before && this->heightChanged)
+        {
+            this->heightChanged();
+        }
+    }
+
     /// Wraps every option to the current width and works out the rows.
     void relayout()
     {
+        if (this->relayouting_)
+        {
+            return;
+        }
+        this->relayouting_ = true;
+
         const QFontMetrics metrics(this->font());
         const int pad = this->textPadding();
         const qint64 all = allVotes(this->poll_);
 
         this->rows_.clear();
         int y = 0;
-        for (qsizetype i = 0; i < this->poll_.options.size(); i++)
+        for (size_t i = 0; i < static_cast<size_t>(this->poll_.options.size());
+             i++)
         {
             Row row;
             row.top = y;
-            row.share = this->shareText(static_cast<size_t>(i), all);
-
-            QString label = QString::number(i + 1) + QStringLiteral("  ") +
-                            this->poll_.options[i];
-            label.replace(QChar(u'\n'), QChar(u' '));
-            label.replace(QChar(u'\r'), QChar(u' '));
-            row.layout =
-                std::make_unique<QTextLayout>(label, this->font(), this);
+            row.share = this->shareText(i, all);
 
             // Room: a padding, the text, a padding, the share, a padding
             const int available =
                 std::max(20, this->width() - 3 * pad -
                                  metrics.horizontalAdvance(row.share));
-            row.textHeight = layoutText(*row.layout, available);
+
+            row.view = i < this->views_.size() ? this->views_[i] : nullptr;
+            row.textHeight = metrics.height();
+            if (row.view != nullptr)
+            {
+                row.view->setWidth(available);
+                row.textHeight = std::max(1, row.view->height());
+            }
             row.height =
                 std::max(metrics.height(), row.textHeight) + this->rowPadding();
+
+            if (row.view != nullptr)
+            {
+                // In the middle of the row, after the padding
+                row.view->move(pad,
+                               row.top + (row.height - row.textHeight) / 2);
+            }
 
             y += row.height;
             this->rows_.push_back(std::move(row));
@@ -382,6 +453,8 @@ private:
 
         this->contentHeight_ = this->rows_.empty() ? this->rowHeight() : y;
         this->setFixedHeight(this->contentHeight_);
+
+        this->relayouting_ = false;
     }
 
     DggPoll poll_;
@@ -390,6 +463,14 @@ private:
     float scale_ = 1.0F;
     std::vector<Row> rows_;
     int contentHeight_ = 0;
+
+    /// One view for each option, and the text each shows
+    std::vector<MessageView *> views_;
+    std::vector<QString> shownTexts_;
+
+    /// relayout() is running (a view's height changing meanwhile is
+    /// read by it, not by another relayout())
+    bool relayouting_ = false;
 
     /// Slides the bars from `from_` to `to_`
     QVariantAnimation *animation_ = nullptr;
@@ -423,7 +504,7 @@ DggPollBanner::DggPollBanner(QWidget *parent)
     , infoLabel_(new QLabel(this))
     , statusLabel_(new QLabel(this))
     , closeButton_(new LabelButton(QStringLiteral("\u2715"), this))
-    , questionLabel_(new QLabel(this))
+    , questionView_(new MessageView())
     , optionsScrollArea_(new QScrollArea(this))
     , optionsView_(new PollOptionsView(this))
     , refreshTimer_(new QTimer(this))
@@ -451,12 +532,13 @@ DggPollBanner::DggPollBanner(QWidget *parent)
     headerRow->addWidget(this->closeButton_);
     outerBox->addLayout(headerRow);
 
-    // The question
-    this->questionLabel_->setWordWrap(true);
-    this->questionLabel_->setTextFormat(Qt::PlainText);
-    this->questionLabel_->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-    this->questionLabel_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    outerBox->addWidget(this->questionLabel_);
+    // The question, drawn like a chat line (emotes, links and names work)
+    this->questionView_->setBackground(MessageView::Background::Header);
+    outerBox->addWidget(this->questionView_, 0, Qt::AlignLeft);
+    QObject::connect(this->questionView_, &MessageView::linkClicked, this,
+                     [this](const Link &link) {
+                         this->openLink(link);
+                     });
 
     // The options
     this->optionsScrollArea_->setWidgetResizable(true);
@@ -483,6 +565,17 @@ DggPollBanner::DggPollBanner(QWidget *parent)
                 getApp()->getDggChatServer()->castPollVote(*channel, option);
             }
         };
+    static_cast<PollOptionsView *>(this->optionsView_)->makeMessage =
+        [this](const QString &text) -> MessagePtr {
+        const auto channel = this->channel_.lock();
+        const auto *assets = getApp()->getDggChatServer()->assets();
+        if (!channel || assets == nullptr)
+        {
+            return nullptr;
+        }
+        return DggMessageBuilder::makePollTextMessage(channel.get(), text,
+                                                      *assets);
+    };
 
     this->refreshTimer_->setSingleShot(true);
     this->refreshTimer_->setInterval(100ms);
@@ -534,6 +627,7 @@ void DggPollBanner::setChannel(const std::shared_ptr<DggChannel> &channel)
     this->channel_ = channel;
 
     this->currentKey_.clear();
+    this->shownQuestion_.clear();
     this->closed_ = false;
     this->sawRunning_ = false;
     this->endShown_ = false;
@@ -631,13 +725,8 @@ void DggPollBanner::refresh()
     }
     this->poll_ = poll;
 
-    this->infoLabel_->setText(pollTitle(poll));
-    this->questionLabel_->setText(poll.question);
-
-    auto *options = static_cast<PollOptionsView *>(this->optionsView_);
-    options->setPoll(poll, this->theme->splits.header.text, this->theme->accent,
-                     this->scale());
-    this->fitOptions();
+    this->updateTexts();
+    this->updateOptions();
 
     this->tick();
 
@@ -656,6 +745,83 @@ void DggPollBanner::refresh()
     }
 
     this->show();
+}
+
+void DggPollBanner::updateTexts()
+{
+    if (!this->poll_)
+    {
+        return;
+    }
+
+    this->infoLabel_->setText(pollTitle(*this->poll_));
+
+    // Only built again when the question changed: votes come in far more
+    // often than that
+    const auto channel = this->channel_.lock();
+    const auto *assets = getApp()->getDggChatServer()->assets();
+    if (channel && assets != nullptr &&
+        (this->shownQuestion_ != this->poll_->question ||
+         this->shownQuestion_.isNull()))
+    {
+        this->shownQuestion_ = this->poll_->question;
+        this->questionView_->setWrappedMessage(
+            DggMessageBuilder::makePollTextMessage(
+                channel.get(), this->poll_->question, *assets));
+    }
+    this->updateQuestionWidth();
+}
+
+void DggPollBanner::updateOptions()
+{
+    if (!this->poll_)
+    {
+        return;
+    }
+
+    auto *options = static_cast<PollOptionsView *>(this->optionsView_);
+    options->setPoll(*this->poll_, this->theme->splits.header.text,
+                     this->theme->accent, this->scale());
+    this->fitOptions();
+}
+
+void DggPollBanner::updateQuestionWidth()
+{
+    // The banner minus the margins of its layout
+    this->questionView_->setWidth(std::max(1, this->width() - 16));
+}
+
+void DggPollBanner::openLink(const Link &link)
+{
+    switch (link.type)
+    {
+        case Link::Url: {
+            if (getSettings()->openLinksIncognito && supportsIncognitoLinks())
+            {
+                openLinkIncognito(link.value);
+            }
+            else
+            {
+                QDesktopServices::openUrl(QUrl(link.value));
+            }
+        }
+        break;
+
+        case Link::UserInfo: {
+            // The user card belongs to the split's chat view
+            auto *split = dynamic_cast<Split *>(this->parentWidget());
+            const auto channel = this->channel_.lock();
+            if (split != nullptr && channel)
+            {
+                split->getChannelView().showUserInfoPopup(
+                    link.value, MessagePlatform::Dgg, channel->getName());
+            }
+        }
+        break;
+
+        default:
+            break;
+    }
 }
 
 void DggPollBanner::fitOptions()
@@ -739,11 +905,6 @@ void DggPollBanner::scaleChangedEvent(float newScale)
     this->infoLabel_->setFont(headerFont);
     this->statusLabel_->setFont(headerFont);
 
-    QFont questionFont = this->questionLabel_->font();
-    questionFont.setPointSizeF(11.0F * newScale);
-    questionFont.setBold(true);
-    this->questionLabel_->setFont(questionFont);
-
     QFont optionFont = this->optionsView_->font();
     optionFont.setPointSizeF(10.0F * newScale);
     this->optionsView_->setFont(optionFont);
@@ -752,6 +913,22 @@ void DggPollBanner::scaleChangedEvent(float newScale)
     {
         this->refresh();
     }
+}
+
+void DggPollBanner::themeChangedEvent()
+{
+    // The colours of the options come from the theme. Only those are handed
+    // over again (not a whole refresh(), which shows the banner).
+    if (this->poll_)
+    {
+        this->updateOptions();
+    }
+}
+
+void DggPollBanner::resizeEvent(QResizeEvent *event)
+{
+    BaseWidget::resizeEvent(event);
+    this->updateQuestionWidth();
 }
 
 void DggPollBanner::mousePressEvent(QMouseEvent * /*event*/)
