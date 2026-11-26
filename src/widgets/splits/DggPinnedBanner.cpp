@@ -21,6 +21,7 @@
 #include <QPainter>
 #include <QPaintEvent>
 #include <QPalette>
+#include <QScopeGuard>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QShowEvent>
@@ -232,6 +233,21 @@ void DggPinnedBanner::toggleUserPinned()
 
 void DggPinnedBanner::updateMessageHeight()
 {
+    // setWidth() below makes the view report a new height (heightChanged),
+    // which calls this function again. Without this guard a message taller
+    // than the cap never settles: at the full width it is taller than the
+    // cap, so it is wrapped to the narrower width, which reports a height
+    // change, which wraps it to the full width again, ... until the stack is
+    // gone. The heights are read right after each setWidth() here anyway.
+    if (this->updatingHeight_)
+    {
+        return;
+    }
+    this->updatingHeight_ = true;
+    const auto done = qScopeGuard([this] {
+        this->updatingHeight_ = false;
+    });
+
     // Wrap the message to the width of the area. If it is taller than the cap
     // a scrollbar takes some of that width, so it is wrapped again to what is
     // left.
