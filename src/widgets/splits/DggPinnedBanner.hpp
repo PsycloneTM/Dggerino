@@ -91,6 +91,10 @@ private:
     /// Scaled cap for the message area.
     int messageMaxHeight_ = 110;
     int lastAreaWidth_ = -1;
+
+    /// updateMessageHeight() is running: the height changes its own
+    /// setWidth() reports must not start it again.
+    bool updatingHeight_ = false;
 };
 
 }  // namespace chatterino
