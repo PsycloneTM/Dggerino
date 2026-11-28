@@ -67,17 +67,17 @@ public:
         layout->addWidget(this->name);
 
         // DGG has a single chat, so there is no name to enter
-        QObject::connect(
-            this->platform, &QComboBox::currentIndexChanged, this, [this] {
-                bool dgg = this->platform->currentData()
-                               .value<MultiChannel::Platform>() ==
-                           MultiChannel::Platform::Dgg;
-                this->name->setVisible(!dgg);
-                if (!dgg)
-                {
-                    this->name->setFocus();
-                }
-            });
+        QObject::connect(this->platform, &QComboBox::currentIndexChanged, this,
+                         [this] {
+                             bool dgg = this->platform->currentData()
+                                            .value<MultiChannel::Platform>() ==
+                                        MultiChannel::Platform::Dgg;
+                             this->name->setVisible(!dgg);
+                             if (!dgg)
+                             {
+                                 this->name->setFocus();
+                             }
+                         });
 
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok |
                                              QDialogButtonBox::Cancel);
