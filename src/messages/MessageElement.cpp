@@ -23,9 +23,13 @@
 #include "util/DebugCount.hpp"
 #include "util/Variant.hpp"
 
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QPainter>
+#include <QPixmap>
+#include <QSvgRenderer>
 
 #include <algorithm>
 #include <memory>
@@ -56,17 +60,54 @@ QSizeF getBoundingBoxSize(const std::vector<ImagePtr> &images)
     return {width, height};
 }
 
+/// Rasterizes the SVG resource at `path` into a square image that is
+/// `pixelSize` pixels wide and shown `pixelSize * scale` logical pixels wide.
+///
+/// `Image::fromResourcePixmap` finds images by the *address* of the pixmap, so
+/// the pixmap has to outlive every message. It is allocated and never freed on
+/// purpose: a static `QPixmap` would be destroyed after `QApplication` at exit,
+/// which it must not be.
+ImagePtr svgBadgeImage(const QString &path, int pixelSize, qreal scale)
+{
+    QSvgRenderer renderer(path);
+
+    QImage image(pixelSize, pixelSize, QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::transparent);
+    {
+        QPainter painter(&image);
+        painter.setRenderHint(QPainter::Antialiasing);
+        renderer.render(&painter, QRectF(0, 0, pixelSize, pixelSize));
+    }
+
+    auto *pixmap = new QPixmap(QPixmap::fromImage(std::move(image)));
+    return Image::fromResourcePixmap(*pixmap, scale);
+}
+
+/// The 1x and 2x versions of a platform badge, both drawn from the same SVG
+/// so they stay sharp (18 px, and 36 px shown at half size)
+ImageSet svgBadge(const QString &path)
+{
+    return ImageSet{
+        svgBadgeImage(path, 18, 1.0),
+        svgBadgeImage(path, 36, 0.5),
+    };
+}
+
 EmotePtr getKickBadge()
 {
     static EmotePtr ptr = std::make_shared<const Emote>(Emote{
         .name = {u"Kick"_s},
-        .images =
-            ImageSet{
-                Image::fromUrl({u":/badges/platform-kick-18.webp"_s}, 1.0,
-                               {18, 18}),
-                Image::fromUrl({u":/badges/platform-kick-36.webp"_s}, .5,
-                               {36, 36}),
-            },
+        .images = svgBadge(u":/badges/platform-kick.svg"_s),
+        .tooltip = Tooltip{},
+    });
+    return ptr;
+}
+
+EmotePtr getDggBadge()
+{
+    static EmotePtr ptr = std::make_shared<const Emote>(Emote{
+        .name = {u"Destiny.gg"_s},
+        .images = svgBadge(u":/badges/platform-dgg.svg"_s),
         .tooltip = Tooltip{},
     });
     return ptr;
@@ -76,13 +117,7 @@ EmotePtr getTwitchBadge()
 {
     static EmotePtr ptr = std::make_shared<const Emote>(Emote{
         .name = {u"Twitch"_s},
-        .images =
-            ImageSet{
-                Image::fromUrl({u":/badges/platform-twitch-18.webp"_s}, 1.0,
-                               {18, 18}),
-                Image::fromUrl({u":/badges/platform-twitch-36.webp"_s}, .5,
-                               {36, 36}),
-            },
+        .images = svgBadge(u":/badges/platform-twitch.svg"_s),
         .tooltip = Tooltip{},
     });
     return ptr;
@@ -820,7 +855,7 @@ void TextElement::addToContainer(MessageLayoutContainer &container,
                     emote = getKickBadge();
                     break;
                 case MessagePlatform::Dgg:
-                    // No platform badge for DGG yet
+                    emote = getDggBadge();
                     break;
             }
         }

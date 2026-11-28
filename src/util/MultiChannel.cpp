@@ -3,6 +3,7 @@
 #include "Application.hpp"
 #include "common/WindowDescriptors.hpp"
 #include "messages/Message.hpp"
+#include "providers/dgg/DggChatServer.hpp"
 #include "providers/kick/KickChatServer.hpp"
 #include "providers/twitch/TwitchIrcServer.hpp"
 #include "util/QCompareTransparent.hpp"
@@ -77,6 +78,9 @@ ChannelPtr resolveChannel(const MultiChannel::Spec &spec)
             return getApp()->getTwitch()->getOrAddChannel(spec.name);
         case MultiChannel::Platform::Kick:
             return getApp()->getKickChatServer()->getOrCreate(spec.name);
+        case MultiChannel::Platform::Dgg:
+            // There is only one DGG chat (one socket), whatever the name
+            return getApp()->getDggChatServer()->getOrCreate();
     }
     return Channel::getEmpty();
 }
@@ -139,8 +143,20 @@ MultiChannel::MultiChannel(std::span<const Spec> channels,
     : Channel(makeChannelName(channels, false), Type::Multi)
     , indicatorMode_(indicatorMode)
 {
+    bool hasDgg = false;
     for (const auto &spec : channels)
     {
+        if (spec.platform == Platform::Dgg)
+        {
+            // Only one DGG channel exists; a second entry would post every
+            // message twice.
+            if (hasDgg)
+            {
+                continue;
+            }
+            hasDgg = true;
+        }
+
         auto channel = resolveChannel(spec);
         std::vector<pajlada::Signals::ScopedConnection> connections;
         connections.emplace_back(channel->messageAppended.connect(
@@ -384,7 +400,7 @@ bool platformMatches(MessagePlatform lhs, MultiChannel::Platform rhs) noexcept
         case MessagePlatform::Kick:
             return rhs == MultiChannel::Platform::Kick;
         case MessagePlatform::Dgg:
-            return false;  // DGG isn't supported in MultiChannel
+            return rhs == MultiChannel::Platform::Dgg;
     }
     return false;
 }

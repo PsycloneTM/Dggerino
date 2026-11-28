@@ -6,6 +6,7 @@
 
 #include "Application.hpp"
 #include "controllers/hotkeys/HotkeyController.hpp"
+#include "providers/dgg/DggChannel.hpp"
 #include "providers/dgg/DggChatServer.hpp"
 #include "providers/kick/KickChatServer.hpp"
 #include "providers/twitch/TwitchIrcServer.hpp"
@@ -58,10 +59,25 @@ public:
             "Twitch", QVariant::fromValue(MultiChannel::Platform::Twitch));
         this->platform->addItem(
             "Kick", QVariant::fromValue(MultiChannel::Platform::Kick));
+        this->platform->addItem(
+            "Destiny.gg", QVariant::fromValue(MultiChannel::Platform::Dgg));
         layout->addWidget(this->platform);
 
         this->name->setPlaceholderText("Name");
         layout->addWidget(this->name);
+
+        // DGG has a single chat, so there is no name to enter
+        QObject::connect(
+            this->platform, &QComboBox::currentIndexChanged, this, [this] {
+                bool dgg = this->platform->currentData()
+                               .value<MultiChannel::Platform>() ==
+                           MultiChannel::Platform::Dgg;
+                this->name->setVisible(!dgg);
+                if (!dgg)
+                {
+                    this->name->setFocus();
+                }
+            });
 
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok |
                                              QDialogButtonBox::Cancel);
@@ -105,6 +121,10 @@ private:
         auto nameText = this->name->text();
         auto platform =
             this->platform->currentData().value<MultiChannel::Platform>();
+        if (platform == MultiChannel::Platform::Dgg)
+        {
+            nameText = DggChannel::channelName();
+        }
         if (!nameText.isEmpty())
         {
             this->specAdded(MultiChannel::Spec{
@@ -129,6 +149,9 @@ QListWidgetItem *makeMultiChannelItem(const MultiChannel::Spec &spec)
             break;
         case MultiChannel::Platform::Kick:
             name += u"[K] ";
+            break;
+        case MultiChannel::Platform::Dgg:
+            name += u"[D] ";
             break;
     }
     name += spec.name;

@@ -19,6 +19,8 @@ public:
     enum class Platform : uint8_t {
         Twitch,
         Kick,
+        // Appended last so saved layouts keep their meaning.
+        Dgg,
     };
 
     struct Spec {

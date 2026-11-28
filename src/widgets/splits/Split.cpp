@@ -751,6 +751,13 @@ void Split::updateInputPlaceholder()
         {
             this->input_->ui_.textEdit->setPlaceholderText({});
         }
+        else if (active->channel->isDggChannel() &&
+                 getApp()->getAccounts()->dgg.current()->isAnonymous())
+        {
+            this->input_->ui_.textEdit->setPlaceholderText(
+                u"Log in to send messages in " % active->channel->getName() %
+                u"...");
+        }
         else
         {
             this->input_->ui_.textEdit->setPlaceholderText(

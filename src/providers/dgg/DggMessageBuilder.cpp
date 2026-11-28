@@ -858,6 +858,19 @@ MessagePtrMut DggMessageBuilder::makeChatMessage(DggChannel *channel,
     builder->loginName = msg.user.nick.toLower();
     builder->userID = QString::number(msg.user.id);
 
+    // Only shown in a multichannel (platform badge / channel name). Kick and
+    // Twitch put this before the timestamp, so insert it at the front (the
+    // constructor already added the timestamp).
+    {
+        auto channelNameElement = std::make_unique<TextElement>(
+            QString(u'#') + channel->getName(), MessageElementFlag::ChannelName,
+            MessageColor::System);
+        channelNameElement->setLink(
+            Link(Link::JumpToChannel, channel->getName()));
+        builder->elements.insert(builder->elements.begin(),
+                                 std::move(channelNameElement));
+    }
+
     if (backlog)
     {
         builder.markBacklog();
